@@ -31,15 +31,18 @@ EXT_IMAGE := localhost/amneziawg:$(AWG_SHORT)-$(TALOS_VERSION)
 BUILDER   := localhost/awg-builder:$(TARGET_ARCH)
 INSTALLER_IMAGE := $(IMAGE):installer-$(TALOS_VERSION)-awg
 
-# imager consumes the extension by *registry reference* only - it will not take a local
-# OCI layout or a path (confirmed: it tries to pull "/ext" from Docker Hub). But nothing
-# says which registry: the nodes never pull the extension, they pull the installer that
-# has it baked in. So `bake` stands up a throwaway registry on this port, publishes the
-# extension into it, builds, and tears it down - the extension never has to be public.
-REG_PORT ?= 5599
-REG_NAME := awg-bake-registry
-REG_REF  := localhost:$(REG_PORT)/amneziawg:bake
-IMAGER   := ghcr.io/siderolabs/imager:$(TALOS_VERSION)
+# imager's --system-extension-image CLI flag only ever produces an imageRef, which means
+# a registry pull - confirmed separately that it is also broken in v1.13.7 regardless.
+# But the *profile* format (which `bake` feeds on stdin either way) accepts an extension
+# as `ociPath: <dir>` instead of `imageRef` - a plain local OCI-layout directory, read
+# straight off disk (pkg/imager/profile/input.go: ContainerAsset.pullFromOCI ->
+# layout.FromPath, no network at all). So there is no registry, throwaway or otherwise:
+# `podman push --format oci` writes the layout next to the other build output, and that
+# directory is what gets referenced. One quirk: podman's oci: transport does not stamp a
+# `platform` on the index descriptor, which imager requires to pick the arch - patched in
+# with jq right after the push.
+EXT_OCI_DIR := $(OUT_DIR)/ext-oci
+IMAGER      := ghcr.io/siderolabs/imager:$(TALOS_VERSION)
 
 # Read straight out of the pinned checkout rather than duplicated here - these are
 # upstream's values and must move with UPSTREAM_PKGS_REF.
@@ -84,7 +87,7 @@ check-pins: ## Assert UPSTREAM_PKGS_REF is the pkgs Talos $(TALOS_VERSION) was b
 .PHONY: preflight
 preflight: ## Check this machine can run the build.
 	@fail=0; \
-	for t in podman git curl; do command -v $$t >/dev/null || { echo "MISSING: $$t"; fail=1; }; done; \
+	for t in podman git curl jq; do command -v $$t >/dev/null || { echo "MISSING: $$t"; fail=1; }; done; \
 	free=$$(df -BG --output=avail $(PWD) | tail -1 | tr -dc 0-9); \
 	if [ "$$free" -lt 40 ]; then echo "LOW DISK: $${free}G here, want >=40G for a kernel tree"; fail=1; fi; \
 	echo "host $$(uname -m), $$(nproc) cores -> building for $(TARGET_ARCH)"; \
@@ -187,23 +190,25 @@ input:
   baseInstaller:
     imageRef: ghcr.io/siderolabs/installer:$(TALOS_VERSION)
   systemExtensions:
-    - imageRef: $(REG_REF)
+    - ociPath: /out/ext-oci
 output:
   kind: $(1)
   outFormat: $(2)
 endef
 
-# Stands the throwaway registry up, publishes the extension into it, runs imager against
-# $(OUT_DIR)/profile.yaml, and tears the registry down even if imager fails.
+# Exports the just-built extension image to a local OCI layout (no registry involved),
+# stamps the arch platform onto it (see EXT_OCI_DIR comment above), and runs imager
+# against $(OUT_DIR)/profile.yaml. /out is the same bind mount imager always gets, so the
+# ociPath in the profile and EXT_OCI_DIR agree by construction.
 define bake
-	trap 'podman rm -f $(REG_NAME) >/dev/null 2>&1 || true' EXIT; \
-	podman rm -f $(REG_NAME) >/dev/null 2>&1 || true; \
-	podman run -d --name $(REG_NAME) -p $(REG_PORT):5000 registry:2 >/dev/null; \
-	sleep 2; \
-	podman push -q --tls-verify=false $(EXT_IMAGE) $(REG_REF); \
+	rm -rf $(EXT_OCI_DIR); \
+	podman push -q --format oci $(EXT_IMAGE) oci:$(EXT_OCI_DIR):bake; \
+	tmp=$$(mktemp); \
+	jq '.manifests[0].platform = {architecture:"$(TARGET_ARCH)", os:"linux"}' \
+	  $(EXT_OCI_DIR)/index.json >"$$tmp" && mv "$$tmp" $(EXT_OCI_DIR)/index.json; \
 	podman run --rm -i --privileged --network host \
-	  -v $(PWD)/$(OUT_DIR):/out:z -v /dev:/dev \
-	  $(IMAGER) - --insecure < $(OUT_DIR)/profile.yaml
+	  -v $(PWD)/$(OUT_DIR):/out:z -v /dev:/dev $(IMAGER) - --insecure \
+	  < $(OUT_DIR)/profile.yaml
 endef
 
 .PHONY: installer

@@ -131,14 +131,18 @@ into its initramfs; the extension is an intermediate artifact, closer to an obje
 than to a distributable. Publishing it would mean maintaining a second versioned tag
 that nothing consumes.
 
-`imager` does insist on a *registry reference* for extensions - it will not take a local
-OCI layout or a path (it tries to pull `/ext` from Docker Hub and fails). But it does not
-care *which* registry, so `make installer` stands up a throwaway registry, publishes the
-extension into it, bakes, and tears it down. That also removes a whole class of mistake:
-the installer is always built from the extension just compiled, never from a stale one
-someone forgot to push.
+The `--system-extension-image` *CLI flag* only ever produces a registry reference (and is
+broken outright in v1.13.7, see below), which is what made it look like a registry was
+unavoidable. It isn't: the *profile* format `imager` reads from stdin accepts an
+extension as `ociPath: <dir>` instead - a plain local OCI-layout directory, read straight
+off disk (`pkg/imager/profile/input.go`, `ContainerAsset.pullFromOCI` -> `layout.FromPath`,
+no network call in that path at all). `make installer` exports the extension it just
+built to such a directory with `podman push --format oci` and points the profile at it.
+Confirmed byte-for-byte identical output to a registry-mediated build. One quirk: podman's
+`oci:` transport doesn't stamp a `platform` onto the index descriptor, which imager needs
+to pick the arch - `make installer` patches it in with `jq` right after the push.
 
-Requires podman, git, curl, ~40 GB free and a couple of hours of CPU (the kernel is the
+Requires podman, git, curl, jq, ~40 GB free and a couple of hours of CPU (the kernel is the
 slow part; the module itself takes seconds). The prepared kernel tree is kept in
 `build/kernel-$TARGET_ARCH` and reused — `make module` after a code change is fast.
 `make clean` keeps it; `make distclean` doesn't.
