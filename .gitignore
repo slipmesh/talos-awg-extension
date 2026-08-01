@@ -1,0 +1,5 @@
+# Upstream clones + everything the build generates. Nothing here is ours: the whole
+# point of the overlay layout is that build/ can be deleted and reproduced from
+# versions.env + overlay/ at any time (`make distclean && make all`).
+build/
+_out/

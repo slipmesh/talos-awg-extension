@@ -1,0 +1,10 @@
+version: v1alpha1
+metadata:
+  name: amneziawg
+  version: "@VERSION@"
+  author: seacat
+  description: |
+    AmneziaWG kernel module (DPI-obfuscated WireGuard fork) for the slipmesh cluster
+  compatibility:
+    talos:
+      version: ">= v1.10.0"
