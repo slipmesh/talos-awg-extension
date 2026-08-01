@@ -1,16 +1,8 @@
 #!/bin/bash
-# Runs INSIDE the builder container. Turns an extracted kernel source tree into one
-# that out-of-tree modules can be built against, using Talos' own config and patches.
-#
-# This is a direct port of what a `kernel-modprep` bldr stage would do, with two
-# deliberate differences from upstream's kernel-build, both found by watching this fail:
-#
-#   - BTF is disabled entirely, not just for modules. Otherwise `make vmlinux` runs
-#     pahole over vmlinux.unstripped and dies with "FAILED: load BTF from
-#     vmlinux.unstripped: Invalid argument". Out-of-tree module builds need none of it.
-#   - Only `vmlinux` + `modules_prepare` are built, not the full in-tree module set.
-#     That is what makes this ~40 minutes instead of ~90, at the cost of no
-#     Module.symvers - see build-module.sh for what that implies.
+# Runs inside the builder container. Turns an extracted kernel source tree into one
+# out-of-tree modules can build against, using Talos' own config and patches. Disables
+# BTF entirely (otherwise `make vmlinux` fails running pahole) and builds only vmlinux +
+# modules_prepare, not the full module set - see README, "Kernel prep".
 set -euo pipefail
 
 : "${KERNEL_ARCH:?}"   # kernel's own ARCH= value: x86 or arm64

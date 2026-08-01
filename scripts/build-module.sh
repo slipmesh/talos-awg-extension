@@ -10,19 +10,10 @@ set -euo pipefail
 
 export ARCH="$KERNEL_ARCH" LLVM=1
 
-# `make modules_prepare` does not produce Module.symvers - only a full `make modules`
-# does, which would mean rebuilding every in-tree module and roughly doubling the build
-# for something we never ship. Without it modpost turns every kernel symbol the module
-# imports into a hard "undefined!", so downgrade that to a warning.
-#
-# The module then carries no __versions section, which the kernel explicitly tolerates:
-# check_version() returns OK when there is no version info at all ("No versions at all?
-# modprobe --force-vermagic!"), even on this CONFIG_MODVERSIONS kernel. The module that
-# has been running on the cluster was built exactly this way.
-#
-# What this gives up is symbol-CRC checking - the thing that would catch an ABI drift
-# between the kernel we built against and the one actually booted. `make check-pins`
-# replaces that guarantee by deriving the kernel from the Talos version.
+# modules_prepare doesn't produce Module.symvers, so modpost would hard-fail on every
+# imported kernel symbol; downgrade that to a warning. The resulting module has no
+# __versions section, which the kernel tolerates - see README, "Kernel prep", for what
+# this gives up and why `check-pins` covers it.
 export KBUILD_MODPOST_WARN=1
 
 echo "==> building amneziawg.ko against $(cat "$SRC/include/config/kernel.release")"
@@ -41,8 +32,7 @@ llvm-strip --strip-debug "$DEST/amneziawg.ko"
 echo "==> built $(du -h "$DEST/amneziawg.ko" | cut -f1) module:"
 modinfo "$DEST/amneziawg.ko" | grep -E '^(name|version|vermagic|srcversion):'
 
-# The failure this project exists to prevent is shipping an extension with no module in
-# it - which installs perfectly happily and only shows up as "the operators can't talk
-# to the kernel". Assert the artifact, not the exit code.
+# A 0-byte module installs happily and only shows up as a runtime failure later - assert
+# the artifact, not just the exit code.
 test -s "$DEST/amneziawg.ko"
 modinfo "$DEST/amneziawg.ko" | grep -q "^vermagic:.*${KREL}"

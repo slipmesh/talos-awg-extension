@@ -1,11 +1,6 @@
-# Builds the AmneziaWG Talos system extension with podman - no Docker, no bldr.
-#
-# The siderolabs Pkgfile build system is a custom BuildKit frontend (the `# syntax =`
-# line in their Pkgfiles), and podman/buildah cannot execute custom frontends - their
-# Pkgfiles aren't even Dockerfiles, they're YAML. So instead of driving that machinery,
-# this assembles the same environment (their `tools` + `llvm` images, see
-# Dockerfile.builder) and runs the kernel/module steps in it directly. Everything here
-# is plain podman.
+# Builds the AmneziaWG Talos system extension with podman - no Docker, no bldr (their
+# Pkgfile build system is a custom BuildKit frontend podman/buildah can't run). See
+# README for the full rationale.
 #
 # build/ is disposable: `make distclean && make all` reproduces it from versions.env,
 # scripts/ and the two Dockerfiles alone.
@@ -14,6 +9,17 @@ include versions.env
 
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
+.DEFAULT_GOAL := help
+
+# No silent single-arch default: nodes are amd64 and arm64 both, so a bare `make all`
+# picking one quietly is how you forget to build the other. Pass TARGET_ARCH explicitly,
+# or use `make release` (or any target below marked arch-independent), which builds both.
+_GOALS := $(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))
+ifeq ($(TARGET_ARCH),)
+  ifneq ($(filter-out release push-manifest distclean help hashes check-pins,$(_GOALS)),)
+    $(error TARGET_ARCH not set - pass TARGET_ARCH=amd64 or TARGET_ARCH=arm64, or run `make release` to build both)
+  endif
+endif
 
 BUILD_DIR := build
 PKGS_DIR  := $(BUILD_DIR)/pkgs
@@ -30,26 +36,16 @@ AWG_SHORT := $(shell printf '%.7s' '$(AWG_REF)')
 EXT_IMAGE := localhost/amneziawg:$(AWG_SHORT)-$(TALOS_VERSION)
 BUILDER   := localhost/awg-builder:$(TARGET_ARCH)
 
-# The per-arch tag is what `installer`/`push` build and publish - each is a genuine
-# single-platform image, kept separate so building both archs doesn't have one overwrite
-# the other. MANIFEST_IMAGE is the tag nodes actually pull: a manifest list combining
-# both, assembled by `push-manifest` from whichever per-arch tags are already in the
-# registry (build+push each arch first). Same tag as before the arch suffix existed, so
-# the upgrade command in the README needed no change - that was the point of doing this.
+# INSTALLER_IMAGE is the per-arch tag `installer`/`push` build and publish. MANIFEST_IMAGE
+# (no arch suffix) is what nodes actually pull - only `push-manifest` produces it, by
+# combining whichever per-arch tags are already in the registry.
 INSTALLER_IMAGE := $(IMAGE):installer-$(TALOS_VERSION)-awg-$(TARGET_ARCH)
 MANIFEST_IMAGE  := $(IMAGE):installer-$(TALOS_VERSION)-awg
 ARCHS           := amd64 arm64
 
-# imager's --system-extension-image CLI flag only ever produces an imageRef, which means
-# a registry pull - confirmed separately that it is also broken in v1.13.7 regardless.
-# But the *profile* format (which `bake` feeds on stdin either way) accepts an extension
-# as `ociPath: <dir>` instead of `imageRef` - a plain local OCI-layout directory, read
-# straight off disk (pkg/imager/profile/input.go: ContainerAsset.pullFromOCI ->
-# layout.FromPath, no network at all). So there is no registry, throwaway or otherwise:
-# `podman push --format oci` writes the layout next to the other build output, and that
-# directory is what gets referenced. One quirk: podman's oci: transport does not stamp a
-# `platform` on the index descriptor, which imager requires to pick the arch - patched in
-# with jq right after the push.
+# imager's --system-extension-image flag only pulls from a registry (and is broken in
+# v1.13.7 regardless) - the profile format accepts ociPath instead, a local OCI layout
+# read straight off disk. No registry needed at all; see imager_profile below.
 EXT_OCI_DIR  := $(OUT_DIR)/ext-oci
 BASE_OCI_DIR := $(OUT_DIR)/base-oci
 IMAGER       := ghcr.io/siderolabs/imager:$(TALOS_VERSION)
@@ -60,8 +56,6 @@ PKGFILE := $(PKGS_DIR)/Pkgfile
 kernel_version = $(shell grep -oP '^\s*linux_version:\s*\K\S+' $(PKGFILE))
 kernel_sha256  = $(shell grep -oP '^\s*linux_sha256:\s*\K\S+' $(PKGFILE))
 tools_rev      = $(shell grep -oP '^\s*TOOLS_REV:\s*\K\S+' $(PKGFILE))
-
-.DEFAULT_GOAL := help
 
 ##@ General
 
@@ -180,20 +174,12 @@ all: preflight check-pins extension ## Everything: toolchain -> kernel -> module
 
 ##@ Talos images
 
-# imager's --system-extension-image CLI flag is broken in v1.13.7: it ends up with an
-# empty image reference ("error pulling image : parsing reference") regardless of
-# --base-installer-image, target architecture, or emulation. An equivalent profile fed
-# on stdin works, so that is what this generates.
+# imager's --system-extension-image flag is broken in v1.13.7 (always ends up with an
+# empty image reference), so this profile is fed on stdin instead.
 #
-# baseInstaller carries BOTH an ociPath and an imageRef, which look redundant but do two
-# different jobs: ContainerAsset.Pull() checks ociPath first and, if set, reads content
-# from there without ever looking at imageRef (pkg/imager/profile/input.go) - so imageRef
-# is never used to fetch anything. It IS used, later and separately, to name the image
-# baked into the output tarball (pkg/imager/out.go: tarball.WriteToFile(path,
-# name.ParseReference(baseInstaller.ImageRef), ...)). Setting it to our own
-# $(INSTALLER_IMAGE) means `podman load` on that tarball creates our tag directly -
-# ghcr.io/siderolabs/installer:$(TALOS_VERSION) is never touched, let alone overwritten
-# with our build's content (it used to be, via a load-then-retag dance - fixed here).
+# baseInstaller.ociPath is what's actually read; imageRef only names the image inside the
+# output tarball. Setting imageRef to our own $(INSTALLER_IMAGE) means `podman load`
+# writes our tag directly, and the real upstream tag is never touched.
 define imager_profile
 arch: $(TARGET_ARCH)
 platform: metal
@@ -213,15 +199,13 @@ input:
   systemExtensions:
     - ociPath: /out/ext-oci
 output:
-  kind: $(1)
-  outFormat: $(2)
+  kind: installer
+  outFormat: raw
 endef
 
-# Exports an image already in local storage to a plain OCI-layout directory under
-# $(OUT_DIR) (no registry involved) and stamps the target platform onto its index -
-# podman's oci: transport doesn't do this itself, but imager requires it to pick the
-# right arch (pkg/imager/profile/input.go: pullFromOCI looks for a manifest whose
-# platform matches). $(1) = source image, $(2) = destination dir under $(OUT_DIR).
+# Exports a local image to a plain OCI-layout directory and stamps a platform onto its
+# index - podman's oci: transport doesn't do this, but imager needs it to pick the arch.
+# $(1) = source image, $(2) = destination dir under $(OUT_DIR).
 define export-to-oci
 	rm -rf $(2); \
 	podman push -q --format oci $(1) oci:$(2):x; \
@@ -230,10 +214,8 @@ define export-to-oci
 	  $(2)/index.json >"$$tmp" && mv "$$tmp" $(2)/index.json
 endef
 
-# Refreshes the real base installer (a plain `podman pull`, same as anyone would run by
-# hand - it only ever replaces that tag with genuine upstream content, so it is not the
-# corruption the old retag dance was), exports both it and the extension to local OCI
-# layouts, and runs imager against $(OUT_DIR)/profile.yaml.
+# Refreshes the base installer, exports both it and the extension to local OCI layouts,
+# and runs imager against $(OUT_DIR)/profile.yaml.
 define bake
 	podman pull -q --arch $(TARGET_ARCH) ghcr.io/siderolabs/installer:$(TALOS_VERSION) >/dev/null; \
 	$(call export-to-oci,ghcr.io/siderolabs/installer:$(TALOS_VERSION),$(BASE_OCI_DIR)); \
@@ -246,7 +228,7 @@ endef
 .PHONY: installer
 installer: extension ## Bake an installer image (what `talosctl upgrade` pulls).
 	@mkdir -p $(OUT_DIR)
-	$(file >$(OUT_DIR)/profile.yaml,$(call imager_profile,installer,raw))
+	$(file >$(OUT_DIR)/profile.yaml,$(imager_profile))
 	@echo "==> baking installer for $(TALOS_VERSION)/$(TARGET_ARCH)"
 	@$(bake)
 	@podman load -q -i $(OUT_DIR)/installer-$(TARGET_ARCH).tar >/dev/null
@@ -282,14 +264,6 @@ release: ## Build+push every arch and publish the multi-arch tag - the one comma
 	  $(MAKE) --no-print-directory installer push TARGET_ARCH=$$a; \
 	done
 	@$(MAKE) --no-print-directory push-manifest
-
-.PHONY: metal
-metal: extension ## Bake a raw disk image for a from-scratch install (dd).
-	@mkdir -p $(OUT_DIR)
-	$(file >$(OUT_DIR)/profile.yaml,$(call imager_profile,image,.zst))
-	@echo "==> baking metal image for $(TALOS_VERSION)/$(TARGET_ARCH)"
-	@$(bake)
-	@ls -lh $(OUT_DIR)/metal-$(TARGET_ARCH).raw.zst
 
 ##@ Maintenance
 
