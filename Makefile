@@ -29,7 +29,16 @@ CONFIG_ARCH := $(TARGET_ARCH)
 AWG_SHORT := $(shell printf '%.7s' '$(AWG_REF)')
 EXT_IMAGE := localhost/amneziawg:$(AWG_SHORT)-$(TALOS_VERSION)
 BUILDER   := localhost/awg-builder:$(TARGET_ARCH)
-INSTALLER_IMAGE := $(IMAGE):installer-$(TALOS_VERSION)-awg
+
+# The per-arch tag is what `installer`/`push` build and publish - each is a genuine
+# single-platform image, kept separate so building both archs doesn't have one overwrite
+# the other. MANIFEST_IMAGE is the tag nodes actually pull: a manifest list combining
+# both, assembled by `push-manifest` from whichever per-arch tags are already in the
+# registry (build+push each arch first). Same tag as before the arch suffix existed, so
+# the upgrade command in the README needed no change - that was the point of doing this.
+INSTALLER_IMAGE := $(IMAGE):installer-$(TALOS_VERSION)-awg-$(TARGET_ARCH)
+MANIFEST_IMAGE  := $(IMAGE):installer-$(TALOS_VERSION)-awg
+ARCHS           := amd64 arm64
 
 # imager's --system-extension-image CLI flag only ever produces an imageRef, which means
 # a registry pull - confirmed separately that it is also broken in v1.13.7 regardless.
@@ -114,7 +123,7 @@ $(BUILD_DIR) $(CACHE_DIR):
 	@mkdir -p $@
 
 # Kernel source straight from kernel.org at upstream's pinned version+hash.
-$(CACHE_DIR)/linux.tar.xz: checkout | $(CACHE_DIR)
+$(CACHE_DIR)/linux.tar.xz: | checkout $(CACHE_DIR)
 	@v=$(call kernel_version); \
 	echo "==> fetching linux-$$v"; \
 	curl -sSL --fail -o $@.tmp "https://cdn.kernel.org/pub/linux/kernel/v$${v%%.*}.x/linux-$$v.tar.xz"
@@ -226,11 +235,27 @@ installer: extension ## Bake an installer image (what `talosctl upgrade` pulls).
 	@podman image inspect $(INSTALLER_IMAGE) --format 'built $(INSTALLER_IMAGE) arch={{.Architecture}} size={{.Size}}'
 
 .PHONY: push
-push: ## Push the installer - the only artifact that is published.
+push: ## Push this arch's installer (intermediate - see push-manifest for what nodes pull).
 	@podman push $(INSTALLER_IMAGE)
+	@echo "pushed $(INSTALLER_IMAGE) - run push-manifest once every arch you need is pushed"
+
+.PHONY: push-manifest
+push-manifest: ## Combine the per-arch installers already in the registry into one multi-arch tag.
+	@for a in $(ARCHS); do \
+	  img="$(IMAGE):installer-$(TALOS_VERSION)-awg-$$a"; \
+	  podman image exists "$$img" || { echo "missing $$img locally - run: make installer push TARGET_ARCH=$$a"; exit 1; }; \
+	done
+	@podman manifest rm $(MANIFEST_IMAGE) >/dev/null 2>&1 || true
+	@podman rmi $(MANIFEST_IMAGE) >/dev/null 2>&1 || true
+	@podman manifest create $(MANIFEST_IMAGE) >/dev/null
+	@for a in $(ARCHS); do \
+	  podman manifest add $(MANIFEST_IMAGE) "$(IMAGE):installer-$(TALOS_VERSION)-awg-$$a" >/dev/null; \
+	done
+	@podman manifest push --all $(MANIFEST_IMAGE) docker://$(MANIFEST_IMAGE)
 	@echo
+	@echo "pushed multi-arch $(MANIFEST_IMAGE) ($(ARCHS))"
 	@echo "upgrade a node with:"
-	@echo "  talosctl -n <node> upgrade --image $(INSTALLER_IMAGE)"
+	@echo "  talosctl -n <node> upgrade --image $(MANIFEST_IMAGE)"
 
 .PHONY: metal
 metal: extension ## Bake a raw disk image for a from-scratch install (dd).

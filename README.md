@@ -108,9 +108,20 @@ does not mention it.
 make print-config   # resolved pins, arch, image names
 make preflight      # podman/git/curl present, >=40G free
 make all            # toolchain -> kernel -> module -> extension image
-make installer      # bake the extension into an installer image
-make push           # publish the installer - the only thing that gets published
+make installer      # bake the extension into an installer image (this arch only)
+make push           # publish this arch's installer tag
 make shell          # interactive shell in the build environment, for debugging
+```
+
+`installer`/`push` work on one `TARGET_ARCH` at a time and tag/publish
+`installer-<talos>-awg-<arch>`. The tag nodes actually pull is the arch-less
+`installer-<talos>-awg`, a multi-arch manifest combining whichever of those are in the
+registry — build and push each arch you need, then:
+
+```sh
+make installer push TARGET_ARCH=amd64
+make installer push TARGET_ARCH=arm64
+make push-manifest
 ```
 
 Then, per node:
