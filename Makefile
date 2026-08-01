@@ -50,8 +50,9 @@ ARCHS           := amd64 arm64
 # directory is what gets referenced. One quirk: podman's oci: transport does not stamp a
 # `platform` on the index descriptor, which imager requires to pick the arch - patched in
 # with jq right after the push.
-EXT_OCI_DIR := $(OUT_DIR)/ext-oci
-IMAGER      := ghcr.io/siderolabs/imager:$(TALOS_VERSION)
+EXT_OCI_DIR  := $(OUT_DIR)/ext-oci
+BASE_OCI_DIR := $(OUT_DIR)/base-oci
+IMAGER       := ghcr.io/siderolabs/imager:$(TALOS_VERSION)
 
 # Read straight out of the pinned checkout rather than duplicated here - these are
 # upstream's values and must move with UPSTREAM_PKGS_REF.
@@ -183,6 +184,16 @@ all: preflight check-pins extension ## Everything: toolchain -> kernel -> module
 # empty image reference ("error pulling image : parsing reference") regardless of
 # --base-installer-image, target architecture, or emulation. An equivalent profile fed
 # on stdin works, so that is what this generates.
+#
+# baseInstaller carries BOTH an ociPath and an imageRef, which look redundant but do two
+# different jobs: ContainerAsset.Pull() checks ociPath first and, if set, reads content
+# from there without ever looking at imageRef (pkg/imager/profile/input.go) - so imageRef
+# is never used to fetch anything. It IS used, later and separately, to name the image
+# baked into the output tarball (pkg/imager/out.go: tarball.WriteToFile(path,
+# name.ParseReference(baseInstaller.ImageRef), ...)). Setting it to our own
+# $(INSTALLER_IMAGE) means `podman load` on that tarball creates our tag directly -
+# ghcr.io/siderolabs/installer:$(TALOS_VERSION) is never touched, let alone overwritten
+# with our build's content (it used to be, via a load-then-retag dance - fixed here).
 define imager_profile
 arch: $(TARGET_ARCH)
 platform: metal
@@ -197,7 +208,8 @@ input:
   initramfs:
     path: /usr/install/$(TARGET_ARCH)/initramfs.xz
   baseInstaller:
-    imageRef: ghcr.io/siderolabs/installer:$(TALOS_VERSION)
+    imageRef: $(INSTALLER_IMAGE)
+    ociPath: /out/base-oci
   systemExtensions:
     - ociPath: /out/ext-oci
 output:
@@ -205,16 +217,27 @@ output:
   outFormat: $(2)
 endef
 
-# Exports the just-built extension image to a local OCI layout (no registry involved),
-# stamps the arch platform onto it (see EXT_OCI_DIR comment above), and runs imager
-# against $(OUT_DIR)/profile.yaml. /out is the same bind mount imager always gets, so the
-# ociPath in the profile and EXT_OCI_DIR agree by construction.
-define bake
-	rm -rf $(EXT_OCI_DIR); \
-	podman push -q --format oci $(EXT_IMAGE) oci:$(EXT_OCI_DIR):bake; \
+# Exports an image already in local storage to a plain OCI-layout directory under
+# $(OUT_DIR) (no registry involved) and stamps the target platform onto its index -
+# podman's oci: transport doesn't do this itself, but imager requires it to pick the
+# right arch (pkg/imager/profile/input.go: pullFromOCI looks for a manifest whose
+# platform matches). $(1) = source image, $(2) = destination dir under $(OUT_DIR).
+define export-to-oci
+	rm -rf $(2); \
+	podman push -q --format oci $(1) oci:$(2):x; \
 	tmp=$$(mktemp); \
 	jq '.manifests[0].platform = {architecture:"$(TARGET_ARCH)", os:"linux"}' \
-	  $(EXT_OCI_DIR)/index.json >"$$tmp" && mv "$$tmp" $(EXT_OCI_DIR)/index.json; \
+	  $(2)/index.json >"$$tmp" && mv "$$tmp" $(2)/index.json
+endef
+
+# Refreshes the real base installer (a plain `podman pull`, same as anyone would run by
+# hand - it only ever replaces that tag with genuine upstream content, so it is not the
+# corruption the old retag dance was), exports both it and the extension to local OCI
+# layouts, and runs imager against $(OUT_DIR)/profile.yaml.
+define bake
+	podman pull -q --arch $(TARGET_ARCH) ghcr.io/siderolabs/installer:$(TALOS_VERSION) >/dev/null; \
+	$(call export-to-oci,ghcr.io/siderolabs/installer:$(TALOS_VERSION),$(BASE_OCI_DIR)); \
+	$(call export-to-oci,$(EXT_IMAGE),$(EXT_OCI_DIR)); \
 	podman run --rm -i --privileged --network host \
 	  -v $(PWD)/$(OUT_DIR):/out:z -v /dev:/dev $(IMAGER) - --insecure \
 	  < $(OUT_DIR)/profile.yaml
@@ -226,12 +249,7 @@ installer: extension ## Bake an installer image (what `talosctl upgrade` pulls).
 	$(file >$(OUT_DIR)/profile.yaml,$(call imager_profile,installer,raw))
 	@echo "==> baking installer for $(TALOS_VERSION)/$(TARGET_ARCH)"
 	@$(bake)
-	@# imager names the tarball's image after the base installer, colliding with the
-	@# official tag locally. Retag by image ID; never `podman untag` the collided name,
-	@# which drops the image outright.
 	@podman load -q -i $(OUT_DIR)/installer-$(TARGET_ARCH).tar >/dev/null
-	@id=$$(podman image inspect ghcr.io/siderolabs/installer:$(TALOS_VERSION) --format '{{.Id}}'); \
-	  podman tag "$$id" $(INSTALLER_IMAGE)
 	@podman image inspect $(INSTALLER_IMAGE) --format 'built $(INSTALLER_IMAGE) arch={{.Architecture}} size={{.Size}}'
 
 .PHONY: push
@@ -256,6 +274,14 @@ push-manifest: ## Combine the per-arch installers already in the registry into o
 	@echo "pushed multi-arch $(MANIFEST_IMAGE) ($(ARCHS))"
 	@echo "upgrade a node with:"
 	@echo "  talosctl -n <node> upgrade --image $(MANIFEST_IMAGE)"
+
+.PHONY: release
+release: ## Build+push every arch and publish the multi-arch tag - the one command for a release.
+	@for a in $(ARCHS); do \
+	  echo "==> $$a"; \
+	  $(MAKE) --no-print-directory installer push TARGET_ARCH=$$a; \
+	done
+	@$(MAKE) --no-print-directory push-manifest
 
 .PHONY: metal
 metal: extension ## Bake a raw disk image for a from-scratch install (dd).

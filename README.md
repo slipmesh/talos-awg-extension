@@ -116,13 +116,15 @@ make shell          # interactive shell in the build environment, for debugging
 `installer`/`push` work on one `TARGET_ARCH` at a time and tag/publish
 `installer-<talos>-awg-<arch>`. The tag nodes actually pull is the arch-less
 `installer-<talos>-awg`, a multi-arch manifest combining whichever of those are in the
-registry — build and push each arch you need, then:
+registry:
 
 ```sh
-make installer push TARGET_ARCH=amd64
-make installer push TARGET_ARCH=arm64
-make push-manifest
+make release   # builds+pushes every ARCHS entry, then publishes the multi-arch tag
 ```
+
+which is shorthand for `make installer push TARGET_ARCH=<a>` per arch in `$(ARCHS)`
+followed by `make push-manifest` — run those individually if you only need one arch, or
+are re-publishing the manifest without rebuilding anything.
 
 Then, per node:
 
@@ -193,10 +195,13 @@ discover, both handled there:
 - imager's `--system-extension-image` **flag is broken** in v1.13.7 - it ends up with an
   empty image reference (`error pulling image : parsing reference ""`) no matter what
   else you pass. Feeding an equivalent profile on stdin works.
-- imager names its output tarball's image after the *base* installer, so loading it
-  collides with the official `ghcr.io/siderolabs/installer:<ver>` tag locally. The
-  Makefile retags by image ID; do not `podman untag` the collided name, which drops the
-  image entirely.
+- imager names its output tarball's image after whatever `baseInstaller.imageRef` says
+  in the profile - which used to be the real `ghcr.io/siderolabs/installer:<ver>`
+  reference (needed so imager could pull it), so `podman load` on the result collided
+  with and silently overwrote that tag with our own build. Fixed by pulling the base
+  installer separately and feeding it to imager as a local OCI layout instead
+  (`baseInstaller.ociPath`) - `imageRef` is then free to be our own target tag, so
+  `podman load` writes straight to it and the official tag is never touched.
 
 The installer is ~192 MB, of which ~103 MB is the UKI (kernel + initramfs) and ~43 MB the
 installer binary. Our module accounts for 240 KB of it - the same image built without the
