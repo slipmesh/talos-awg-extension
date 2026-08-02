@@ -1,8 +1,10 @@
 #!/bin/bash
 # Runs inside the builder container. Turns an extracted kernel source tree into one
-# out-of-tree modules can build against, using Talos' own config and patches. Disables
-# BTF entirely (otherwise `make vmlinux` fails running pahole) and builds only vmlinux +
-# modules_prepare, not the full module set - see README, "Kernel prep".
+# out-of-tree modules can build against, using Talos' own config and patches unmodified
+# (BTF stays on - CONFIG_DEBUG_INFO_BTF_MODULES changes struct module's layout, so
+# disabling it makes the module ABI-incompatible with the real, BTF-enabled running
+# kernel: "must match the kernel's built struct module size at run time"). Builds only
+# vmlinux + modules_prepare, not the full module set - see README, "Kernel prep".
 set -euo pipefail
 
 : "${KERNEL_ARCH:?}"   # kernel's own ARCH= value: x86 or arm64
@@ -33,7 +35,6 @@ mkdir -p certs && cp -v "$ASSETS"/certs/* certs/
 export ARCH="$KERNEL_ARCH" LLVM=1
 
 echo "==> configuring"
-./scripts/config --disable CONFIG_DEBUG_INFO_BTF --disable CONFIG_DEBUG_INFO_BTF_MODULES
 make olddefconfig
 
 echo "==> building vmlinux + modules_prepare (this is the slow part)"

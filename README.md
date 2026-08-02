@@ -62,10 +62,18 @@ For `v1.13.7` that is `v1.13.0-49-g91fe0a0` — commit `91fe0a0`, whose Pkgfile 
 
 ## Kernel prep
 
-Both of these produce a 0-byte-module extension that installs happily if gotten wrong:
+`prepare-kernel.sh` builds `vmlinux` from Talos' config unmodified — including
+`CONFIG_DEBUG_INFO_BTF_MODULES`, which is not optional: it changes the size of
+`struct module` itself. Turn it off and the module's `struct module` no longer matches
+the real (BTF-enabled) running kernel's, and the module fails to load with `.gnu.linkonce.
+this_module section size must match the kernel's built struct module size at run time` /
+`exec format error` — confirmed on a real node. An earlier revision disabled BTF to work
+around a `pahole` crash on `vmlinux.unstripped`; that crash no longer reproduces with the
+current toolchain pin, so there's nothing left to work around.
 
-- **BTF off entirely**, not just `CONFIG_DEBUG_INFO_BTF_MODULES` — otherwise
-  `make vmlinux` dies running pahole over `vmlinux.unstripped`.
+One thing that still produces a 0-byte-module extension that installs happily if gotten
+wrong:
+
 - **No `Module.symvers`** — `modules_prepare` doesn't produce one, and a full
   `make modules` would double the build for something never shipped. Without it modpost
   turns every imported kernel symbol into a hard `undefined!`, so `build-module.sh` sets
@@ -75,11 +83,18 @@ Both of these produce a 0-byte-module extension that installs happily if gotten 
 
 ## Module signing
 
-The module isn't signed by the key the stock Talos kernel trusts, so any image baking it
-in needs `--extra-kernel-arg module.sig_enforce=0` — without it the kernel silently
-refuses to load the module. It must be baked into the image, not set via machine config:
-it's a kernel argument, and `extraKernelArgs` only takes effect after the install that
-already needs it.
+The module isn't signed by the key the stock Talos kernel trusts (that key is a
+build-time throwaway the kernel generates fresh on every build and never exports — not
+reproducible by us, and not fixable by switching build tooling), so any image baking it
+in needs to turn off `sig_enforce`. It must be baked into the image, not set via machine
+config: it's a kernel argument, and `extraKernelArgs` only takes effect after the install
+that already needs it.
+
+The base installer already carries `module.sig_enforce=1`, and `sig_enforce` is a
+`bool_enable_only` module param — once on, a later `module.sig_enforce=0` on the same
+cmdline is silently ignored (confirmed on a real node: both were in `/proc/cmdline`, but
+`/sys/module/module/parameters/sig_enforce` stayed `Y`). The fix is `-module.sig_enforce`
+(the `-` prefix), which removes the base arg instead of losing an override race against it.
 
 ## Usage
 
@@ -90,7 +105,7 @@ Every target below needs `TARGET_ARCH=amd64` or `TARGET_ARCH=arm64` (no default 
 make print-config   # resolved pins, arch, image names
 make preflight      # podman/git/curl present, >=40G free
 make all            # toolchain -> kernel -> module -> extension image
-make installer      # bake the extension into an installer image (this arch only)
+make installer      # publish the extension, then bake it into an installer (this arch)
 make push           # publish this arch's installer tag
 make shell          # interactive shell in the build environment, for debugging
 ```
@@ -113,7 +128,7 @@ talosctl -n <node> upgrade --image docker.io/ffaxl/talos:installer-<talos>-awg
 Bare-metal `dd` installs are assembled elsewhere, from this published installer tag —
 out of scope here.
 
-## Why the extension is never published
+## Publishing the extension
 
 Image Factory only assembles extensions from its own catalog by name — there's no way to
 feed it an arbitrary image. So the extension is baked into the installer locally, by
@@ -121,17 +136,18 @@ feed it an arbitrary image. So the extension is baked into the installer locally
 `--system-extension-image` flag (broken in v1.13.7 — always ends up with an empty image
 reference).
 
-That profile accepts extensions and the base installer as `ociPath: <dir>`, a plain local
-OCI layout read straight off disk — no registry involved. `make installer` exports both
-images to such directories with `podman push --format oci` (patching a `platform` onto
-the index with `jq`, since podman's `oci:` transport doesn't stamp one, and imager needs
-it to pick the arch). This is also why the extension itself is never published: nothing
-ever needs to pull it over a registry, so it stays `localhost/amneziawg:...`.
+That profile's `systemExtensions` only takes a registry reference, not a local path — so
+`bake` tags the just-built extension as `extension-<talos>-awg-<arch>` and pushes it to
+`docker.io/ffaxl/talos` before every `make installer` invokes imager. Nodes never pull
+this tag themselves: they get everything already baked into the installer's initramfs.
 
-One more quirk: `baseInstaller` also has an `imageRef`, used only to *name* the image
-inside the output tarball, not to fetch it. Pointing that at our own `INSTALLER_IMAGE`
-(instead of the real `ghcr.io/siderolabs/installer:<ver>`) means `podman load` writes our
-tag directly, and the real upstream tag is never touched.
+`baseInstaller` is different: it carries both an `ociPath` (what's actually read — a
+local OCI layout `make installer` exports with `podman push --format oci`, patching a
+`platform` onto the index with `jq` since podman's `oci:` transport doesn't stamp one and
+imager needs it to pick the arch) and an `imageRef`, used only to *name* the image inside
+the output tarball. Pointing that at our own `INSTALLER_IMAGE` (instead of the real
+`ghcr.io/siderolabs/installer:<ver>`) means `podman load` writes our tag directly, and
+the real upstream tag is never touched.
 
 Requires podman, git, curl, jq, ~40 GB free and a couple of hours of CPU (the kernel is
 the slow part; the module itself takes seconds). The prepared kernel tree is kept in

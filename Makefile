@@ -44,11 +44,11 @@ MANIFEST_IMAGE  := $(IMAGE):installer-$(TALOS_VERSION)-awg
 ARCHS           := amd64 arm64
 
 # imager's --system-extension-image flag only pulls from a registry (and is broken in
-# v1.13.7 regardless) - the profile format accepts ociPath instead, a local OCI layout
-# read straight off disk. No registry needed at all; see imager_profile below.
-EXT_OCI_DIR  := $(OUT_DIR)/ext-oci
-BASE_OCI_DIR := $(OUT_DIR)/base-oci
-IMAGER       := ghcr.io/siderolabs/imager:$(TALOS_VERSION)
+# v1.13.7 regardless) - the profile format takes systemExtensions.imageRef too, a normal
+# registry pull, which is what `bake` publishes EXT_IMAGE under before invoking imager.
+EXT_PUBLISHED_IMAGE := $(IMAGE):extension-$(TALOS_VERSION)-awg-$(TARGET_ARCH)
+BASE_OCI_DIR         := $(OUT_DIR)/base-oci
+IMAGER               := ghcr.io/siderolabs/imager:$(TALOS_VERSION)
 
 # Read straight out of the pinned checkout rather than duplicated here - these are
 # upstream's values and must move with UPSTREAM_PKGS_REF.
@@ -179,15 +179,22 @@ all: preflight check-pins extension ## Everything: toolchain -> kernel -> module
 #
 # baseInstaller.ociPath is what's actually read; imageRef only names the image inside the
 # output tarball. Setting imageRef to our own $(INSTALLER_IMAGE) means `podman load`
-# writes our tag directly, and the real upstream tag is never touched.
+# writes our tag directly, and the real upstream tag is never touched. systemExtensions
+# only takes a registry reference (no local-path equivalent), which is why `bake` pushes
+# EXT_PUBLISHED_IMAGE before invoking imager.
 define imager_profile
 arch: $(TARGET_ARCH)
 platform: metal
 secureboot: false
 version: $(TALOS_VERSION)
 customization:
+  # sig_enforce is a bool_enable_only module param: it can be switched 1 but a later
+  # =0 on the same cmdline is ignored, so appending module.sig_enforce=0 after the base
+  # installer's own module.sig_enforce=1 does nothing (confirmed on a real node - stayed
+  # `Y` in /sys/module/module/parameters/sig_enforce despite both being in /proc/cmdline).
+  # The "-" prefix removes the base arg outright instead of adding a losing second one.
   extraKernelArgs:
-    - module.sig_enforce=0
+    - -module.sig_enforce
 input:
   kernel:
     path: /usr/install/$(TARGET_ARCH)/vmlinuz
@@ -197,7 +204,7 @@ input:
     imageRef: $(INSTALLER_IMAGE)
     ociPath: /out/base-oci
   systemExtensions:
-    - ociPath: /out/ext-oci
+    - imageRef: $(EXT_PUBLISHED_IMAGE)
 output:
   kind: installer
   outFormat: raw
@@ -214,12 +221,14 @@ define export-to-oci
 	  $(2)/index.json >"$$tmp" && mv "$$tmp" $(2)/index.json
 endef
 
-# Refreshes the base installer, exports both it and the extension to local OCI layouts,
-# and runs imager against $(OUT_DIR)/profile.yaml.
+# Refreshes the base installer and exports it to a local OCI layout, publishes the
+# extension (imager only takes systemExtensions by registry reference), and runs imager
+# against $(OUT_DIR)/profile.yaml.
 define bake
 	podman pull -q --arch $(TARGET_ARCH) ghcr.io/siderolabs/installer:$(TALOS_VERSION) >/dev/null; \
 	$(call export-to-oci,ghcr.io/siderolabs/installer:$(TALOS_VERSION),$(BASE_OCI_DIR)); \
-	$(call export-to-oci,$(EXT_IMAGE),$(EXT_OCI_DIR)); \
+	podman tag $(EXT_IMAGE) $(EXT_PUBLISHED_IMAGE); \
+	podman push -q $(EXT_PUBLISHED_IMAGE) >/dev/null; \
 	podman run --rm -i --privileged --network host \
 	  -v $(PWD)/$(OUT_DIR):/out:z -v /dev:/dev $(IMAGER) - --insecure \
 	  < $(OUT_DIR)/profile.yaml
