@@ -1,7 +1,9 @@
 # talos-awg-extension
 
 Builds the **AmneziaWG** Talos system extension — the DPI-obfuscated WireGuard fork's
-kernel module, packaged so Talos can load it.
+kernel module, packaged so Talos can load it, plus `ext-awg`, the extension service that
+actually configures AmneziaWG interfaces (mesh links and/or road-warrior peers) on the
+node from a static config — see `docs/extension-services.md`.
 
 Builds with **podman**, on any machine, for any target architecture.
 
@@ -25,12 +27,20 @@ scripts/
   prepare-kernel.sh   patch/configure the kernel tree so modules can build against it
   build-module.sh     compile amneziawg.ko, strip it, assert it is real
 manifest.yaml.in      extension manifest, @VERSION@ substituted at build time
+docs/
+  extension-services.md  ext-awg: config schema, machine config example, verification
 build/                (gitignored) pkgs checkout, kernel tree, downloads, output
 ```
 
 Only `pkgs` is cloned, purely as the source of the kernel config, signing certs, patch
 set and the pinned kernel version. `build/` is disposable: `make distclean && make all
 TARGET_ARCH=<arch>` reproduces it.
+
+`ext-awg` itself — a Rust binary, no relation to the kernel-build toolchain above — lives in
+the sibling repo `../talos-extensions` and is cross-compiled + staged into `build/out-<arch>/
+rootfs/` by `make agents` (part of `make all`/`make extension`, see "Usage" below). See that
+repo's README for what it does; see `docs/extension-services.md` here for how it's configured
+and packaged into this extension.
 
 ## Cross-architecture
 
@@ -57,8 +67,8 @@ Talos declares which pkgs it was built from, so the pkgs pin is derivable:
 curl https://raw.githubusercontent.com/siderolabs/talos/$TALOS_VERSION/pkg/machinery/gendata/data/pkgs
 ```
 
-For `v1.13.7` that is `v1.13.0-49-g91fe0a0` — commit `91fe0a0`, whose Pkgfile pins
-`linux_version: 6.18.39`. `make check-pins` asserts this and runs as part of `make all`.
+For `v1.13.8` that is `v1.13.0-55-gf677246` — commit `f677246`, whose Pkgfile pins
+`linux_version: 6.18.42`. `make check-pins` asserts this and runs as part of `make all`.
 
 ## Kernel prep
 
@@ -103,8 +113,9 @@ Every target below needs `TARGET_ARCH=amd64` or `TARGET_ARCH=arm64` (no default 
 
 ```sh
 make print-config   # resolved pins, arch, image names
-make preflight      # podman/git/curl present, >=40G free
-make all            # toolchain -> kernel -> module -> extension image
+make preflight      # podman/git/curl/cargo/cargo-zigbuild present, >=40G free
+make agents         # cross-compile ext-awg from ../talos-extensions, stage into the rootfs
+make all            # toolchain -> kernel -> module -> agents -> extension image
 make installer      # publish the extension, then bake it into an installer (this arch)
 make push           # publish this arch's installer tag
 make shell          # interactive shell in the build environment, for debugging

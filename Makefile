@@ -36,6 +36,14 @@ AWG_SHORT := $(shell printf '%.7s' '$(AWG_REF)')
 EXT_IMAGE := localhost/amneziawg:$(AWG_SHORT)-$(TALOS_VERSION)
 BUILDER   := localhost/awg-builder:$(TARGET_ARCH)
 
+# The `awg` Talos extension-service daemon (mesh + roadwarriors interface config) lives in a
+# sibling repo, not here - this repo only cross-compiles it and stages it into the rootfs
+# alongside the kernel module. See that repo's README/AGENTS.md for what it does.
+AGENTS_DIR         := ../talos-extensions
+AGENT_RUST_TARGET_amd64 := x86_64-unknown-linux-musl
+AGENT_RUST_TARGET_arm64 := aarch64-unknown-linux-musl
+AGENT_RUST_TARGET       := $(AGENT_RUST_TARGET_$(TARGET_ARCH))
+
 # INSTALLER_IMAGE is the per-arch tag `installer`/`push` build and publish. MANIFEST_IMAGE
 # (no arch suffix) is what nodes actually pull - only `push-manifest` produces it, by
 # combining whichever per-arch tags are already in the registry.
@@ -92,6 +100,9 @@ check-pins: ## Assert UPSTREAM_PKGS_REF is the pkgs Talos $(TALOS_VERSION) was b
 preflight: ## Check this machine can run the build.
 	@fail=0; \
 	for t in podman git curl jq; do command -v $$t >/dev/null || { echo "MISSING: $$t"; fail=1; }; done; \
+	command -v cargo >/dev/null || { echo "MISSING: cargo"; fail=1; }; \
+	command -v cargo-zigbuild >/dev/null || { echo "MISSING: cargo-zigbuild (cargo install cargo-zigbuild --locked)"; fail=1; }; \
+	[ -d $(AGENTS_DIR) ] || { echo "MISSING: sibling checkout $(AGENTS_DIR)"; fail=1; }; \
 	free=$$(df -BG --output=avail $(PWD) | tail -1 | tr -dc 0-9); \
 	if [ "$$free" -lt 40 ]; then echo "LOW DISK: $${free}G here, want >=40G for a kernel tree"; fail=1; fi; \
 	echo "host $$(uname -m), $$(nproc) cores -> building for $(TARGET_ARCH)"; \
@@ -157,8 +168,19 @@ module: kernel $(CACHE_DIR)/awg.tar.gz ## Compile amneziawg.ko against the prepa
 	  -e KERNEL_ARCH=$(KERNEL_ARCH) \
 	  $(BUILDER) /bin/bash /scripts/build-module.sh
 
+.PHONY: agents
+agents: module ## Cross-compile the awg extension-service daemon and stage it into the rootfs.
+	@test -d $(AGENTS_DIR) || { echo "sibling checkout not found: $(AGENTS_DIR)"; exit 1; }
+	@command -v cargo-zigbuild >/dev/null || { echo "MISSING: cargo-zigbuild"; exit 1; }
+	@rustup target add $(AGENT_RUST_TARGET) >/dev/null 2>&1 || true
+	@echo "==> cross-compiling awg for $(TARGET_ARCH) ($(AGENT_RUST_TARGET))"
+	@(cd $(AGENTS_DIR) && cargo zigbuild --release --target $(AGENT_RUST_TARGET) -p awg)
+	@mkdir -p $(OUT_DIR)/rootfs/usr/local/lib/containers/awg $(OUT_DIR)/rootfs/usr/local/etc/containers
+	@cp $(AGENTS_DIR)/target/$(AGENT_RUST_TARGET)/release/awg $(OUT_DIR)/rootfs/usr/local/lib/containers/awg/awg
+	@cp $(AGENTS_DIR)/extension-services/awg.yaml $(OUT_DIR)/rootfs/usr/local/etc/containers/awg.yaml
+
 .PHONY: extension
-extension: module ## Package the module as a Talos system extension image.
+extension: agents ## Package the module + awg extension service as a Talos system extension image.
 	@sed -e 's|@VERSION@|$(AWG_SHORT)-$(TALOS_VERSION)|' manifest.yaml.in > $(OUT_DIR)/manifest.yaml
 	@echo "==> building $(EXT_IMAGE) ($(TARGET_ARCH))"
 	@podman build -q --arch $(TARGET_ARCH) -t $(EXT_IMAGE) -f Dockerfile.extension $(OUT_DIR) >/dev/null
