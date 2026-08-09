@@ -49,11 +49,11 @@ interfaces:
     listen_port: 51820
     addresses: ["fe80::a1b2:c3d4/64"]   # CIDR, IPv4/IPv6 freely mixed, any count of either
     private_key: "...base64, this node's own..."
-    obfuscation:                 # every field optional; omitted = kernel module default
-      jc: 4
-      jmin: 40
-      jmax: 70
-      h1: 1
+    obfuscation:                 # every field optional; omitted = kernel module default. This is
+      jc: 4                      # the original nine (jc/jmin/jmax/s1/s2/h1-h4) - the full AmneziaWG
+      jmin: 40                   # 3.0 set (s3/s4, i1-i5, header_protection_key, content padding,
+      jmax: 70                   # rekey/keepalive/handshake timing) is also supported; see
+      h1: 1                      # ../../talos-extensions/README.md for the complete field list.
       h2: 2
       h3: 3
       h4: 4
