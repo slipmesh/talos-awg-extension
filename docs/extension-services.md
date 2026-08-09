@@ -77,6 +77,29 @@ same key across every node's config when a single shared identity is needed (e.g
 interface, so a roaming client sees one consistent server identity regardless of which node
 answers).
 
+## `machine.sysctls`: `net.ipv6.conf.default.keep_addr_on_down`
+
+Without this, a statically assigned address (in particular an interface's IPv6 link-local, used
+for an OSPFv3-style underlay) gets dropped every time the interface cycles down/up - e.g. a brief
+reconnect - and doesn't come back until the next full reconcile reassigns it.
+
+`ext-awg` does **not** set this itself: writing `net.ipv6.conf.<iface>.keep_addr_on_down` from
+inside the extension service failed on a real node (the container isn't permitted to write
+`/proc/sys` there), and even if it could, Talos's own `machine.sysctls` can't set a *per-interface*
+sysctl for an interface that doesn't exist yet at boot - `mesh-*`/etc. interfaces are created later,
+by `ext-awg` itself, well after Talos finishes applying `machine.sysctls` once at config-load time.
+
+Instead, set the **default** template once - the kernel copies `net.ipv6.conf.default.*`
+(`ipv6_devconf_dflt`) into every interface's own devconf at creation time (confirmed against
+`net/ipv6/addrconf.c`), so this applies to every `ext-awg`-created interface automatically, with no
+code in `ext-awg` needed at all:
+
+```yaml
+machine:
+  sysctls:
+    net.ipv6.conf.default.keep_addr_on_down: "1"
+```
+
 ## Full machine config example
 
 Multi-document machine config YAML - the `ExtensionServiceConfig` document's `name` must match the
@@ -90,6 +113,8 @@ machine:
   kernel:
     modules:
       - name: amneziawg
+  sysctls:
+    net.ipv6.conf.default.keep_addr_on_down: "1"
 ---
 apiVersion: v1alpha1
 kind: ExtensionServiceConfig
