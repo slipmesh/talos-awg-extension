@@ -1,0 +1,44 @@
+# Overlaid onto a siderolabs/extensions checkout (see Makefile's checkout-extensions
+# target) at amneziawg/pkg.yaml, alongside awg-service.yaml (copied from the sibling
+# ../talos-extensions repo's extension-services/awg.yaml at build time - the fixed
+# container spec ext-awg ships with) and awg-bin (the cross-compiled ext-awg binary,
+# staged in by `make agents` before this runs). Modeled on this same checkout's
+# storage/zfs/pkg.yaml: pulls in the kernel module from the amneziawg-pkg OCI image built
+# in siderolabs/pkgs (see ../pkgs/amneziawg-pkg/pkg.yaml) via `dependencies: [image: ...]`,
+# same as zfs pulls in zfs-pkg - it's a plain OCI layer merge, not a rebuild, so the
+# module's signature (against the kernel built alongside it) is untouched.
+#
+# `name:` below must match manifest.yaml.tmpl's `metadata.name` (both `amneziawg`) - not
+# cosmetic: extensions-validator's --pkg-name check (the `test:` step below) requires
+# bldr's own PKG_NAME env var, derived from this field, to equal the manifest's
+# metadata.name, or the build fails. Confirmed the hard way (`name: awg` here against
+# `metadata.name: amneziawg` there -> "pkg name does not match extension name: awg !=
+# amneziawg").
+name: amneziawg
+variant: scratch
+shell: /bin/bash
+dependencies:
+  - stage: base
+  - image: "{{ .BUILD_ARG_PKGS_PREFIX }}/amneziawg-pkg:{{ .BUILD_ARG_PKGS }}"
+steps:
+  - install:
+      - |
+        mkdir -p /rootfs/usr/lib/modules && cp -R /usr/lib/modules/* /rootfs/usr/lib/modules/
+
+        mkdir -p /rootfs/usr/local/lib/containers/awg /rootfs/usr/local/etc/containers
+        install -m 0755 /pkg/awg-bin /rootfs/usr/local/lib/containers/awg/awg
+        cp /pkg/awg-service.yaml /rootfs/usr/local/etc/containers/awg.yaml
+    test:
+      - |
+        # https://www.kernel.org/doc/html/v4.15/admin-guide/module-signing.html#signed-modules-and-stripping
+        find /rootfs/usr/lib/modules -name '*.ko' -exec grep -FL '~Module signature appended~' {} \+
+      - |
+        mkdir -p /extensions-validator-rootfs
+        cp -r /rootfs/ /extensions-validator-rootfs/rootfs
+        cp /pkg/manifest.yaml /extensions-validator-rootfs/manifest.yaml
+        /extensions-validator validate --rootfs=/extensions-validator-rootfs --pkg-name="${PKG_NAME}"
+finalize:
+  - from: /rootfs
+    to: /rootfs
+  - from: /pkg/manifest.yaml
+    to: /

@@ -1,5 +1,0 @@
-# A Talos system extension is just an image with a manifest and a rootfs - no build
-# system involved.
-FROM scratch
-COPY manifest.yaml /manifest.yaml
-COPY rootfs /rootfs

@@ -5,58 +5,66 @@ kernel module, packaged so Talos can load it, plus `ext-awg`, the extension serv
 actually configures AmneziaWG interfaces (mesh links and/or road-warrior peers) on the
 node from a static config — see `docs/extension-services.md`.
 
-Builds with **podman**, on any machine, for any target architecture.
+Builds with **Docker** (`docker buildx`), on any machine, for any target architecture.
+The module is signed by the same key the kernel it ships with trusts, so Talos's own
+module signature enforcement (`sig_enforce`) stays on — no workaround, no key of our own
+to manage. See `docs/kernel-signing.md` for the full mechanism and why it needs Docker.
 
 ## How it works
 
 A Talos system extension is just a container image holding a `manifest.yaml` and a
-`rootfs/`. The only hard part is the module inside it, which must be compiled against
-exactly the kernel the nodes boot — same version, same config, same patches.
+`rootfs/`. The hard part is the module inside it: it must be compiled against exactly the
+kernel the nodes boot (same version, same config, same patches) *and* signed by a key
+that kernel's own module-signature verification trusts.
 
-siderolabs build that kernel with `bldr`, a custom BuildKit frontend that podman/buildah
-cannot run (their `Pkgfile`s aren't even Dockerfiles). Instead, this project assembles
-the same environment they use — their `tools` image with their `llvm` image overlaid,
-see `Dockerfile.builder` — and runs the kernel and module steps in it directly with
-plain podman.
+siderolabs already has a sanctioned way to do both at once — the same one their own ZFS
+and Gasket-driver extensions use: compile the out-of-tree module *inside* the same
+`bldr`/BuildKit session that builds the kernel package itself
+(`siderolabs/pkgs`'s `kernel-build` stage), so both come out signed by the one throwaway
+key that build generates. This repo now follows that path directly instead of
+hand-rolling kernel prep with a bare kernel tree and a disabled signature check — no more
+podman workaround, no more `-module.sig_enforce`.
 
 ```
-versions.env          every pin: Talos version, pkgs commit, AWG ref, target arch, image
-Dockerfile.builder    siderolabs tools + llvm, merged into a build environment
-Dockerfile.extension  FROM scratch + manifest + rootfs
-scripts/
-  prepare-kernel.sh   patch/configure the kernel tree so modules can build against it
-  build-module.sh     compile amneziawg.ko, strip it, assert it is real
-manifest.yaml.in      extension manifest, @VERSION@ substituted at build time
+versions.env            every pin: Talos version, pkgs/extensions commits, AWG ref, image
+patches/
+  pkgs/amneziawg-pkg/    overlaid onto a siderolabs/pkgs checkout - builds the module
+                         alongside the kernel, shares its signing key
+  extensions/awg/        overlaid onto a siderolabs/extensions checkout - packages the
+                         signed module + ext-awg into an actual Talos system extension
 docs/
+  kernel-signing.md      the full mechanism: why this works, why lighter alternatives don't
   extension-services.md  ext-awg: config schema, machine config example, verification
-build/                (gitignored) pkgs checkout, kernel tree, downloads, output
+build/                  (gitignored) the three checkouts above, plus imager output
 ```
 
-Only `pkgs` is cloned, purely as the source of the kernel config, signing certs, patch
-set and the pinned kernel version. `build/` is disposable: `make distclean && make all
-TARGET_ARCH=<arch>` reproduces it.
+`build/` is disposable: `make distclean && make all TARGET_ARCH=<arch>` reproduces it
+from `versions.env` and `patches/` alone.
 
-`ext-awg` itself — a Rust binary, no relation to the kernel-build toolchain above — lives in
-the sibling repo `../talos-extensions` and is cross-compiled + staged into `build/out-<arch>/
-rootfs/` by `make agents` (part of `make all`/`make extension`, see "Usage" below). See that
-repo's README for what it does; see `docs/extension-services.md` here for how it's configured
-and packaged into this extension.
+`ext-awg` itself — a Rust binary, unrelated to any of the above — lives in the sibling
+repo `../talos-extensions` and is cross-compiled by `make agents`, then handed to the
+`siderolabs/extensions` checkout for packaging alongside the module (part of
+`make extension`, see "Usage" below). See that repo's README for what it does; see
+`docs/extension-services.md` here for how it's configured and packaged into this
+extension.
 
 ## Cross-architecture
 
 `TARGET_ARCH` (amd64 or arm64) is the *nodes'* architecture, not necessarily the build
-machine's — clang cross-compiles natively, so building amd64 on an aarch64 workstation is
-a normal native-speed build, not the QEMU emulation the bldr path would need for a
-foreign target. There's no default; every target needs it explicitly, or use
-`make release` to build both:
+machine's. The kernel+module build (`make kernel`) is arch-independent — it's a single
+multi-platform `docker buildx` invocation covering both `linux/amd64` and `linux/arm64`
+at once, same as upstream's own release process. Everything downstream of that
+(`extension`, `installer`) is per-arch, same as before:
 
 ```sh
 make all TARGET_ARCH=amd64
 make all TARGET_ARCH=arm64
 ```
 
-The resulting image is tagged with the target arch (`podman build --arch`), so an amd64
-module never ends up in an image advertising arm64.
+Building for a foreign target arch runs under QEMU emulation (`docker buildx` registers
+this automatically) rather than natively — slower than the old clang-cross-compiles-
+natively approach, but this is what siderolabs' own pipeline does too; there's no way to
+avoid it while sharing their actual kernel-build signing mechanism.
 
 ## Pinning
 
@@ -70,70 +78,52 @@ curl https://raw.githubusercontent.com/siderolabs/talos/$TALOS_VERSION/pkg/machi
 For `v1.13.8` that is `v1.13.0-55-gf677246` — commit `f677246`, whose Pkgfile pins
 `linux_version: 6.18.42`. `make check-pins` asserts this and runs as part of `make all`.
 
-## Kernel prep
-
-`prepare-kernel.sh` builds `vmlinux` from Talos' config unmodified — including
-`CONFIG_DEBUG_INFO_BTF_MODULES`, which is not optional: it changes the size of
-`struct module` itself. Turn it off and the module's `struct module` no longer matches
-the real (BTF-enabled) running kernel's, and the module fails to load with `.gnu.linkonce.
-this_module section size must match the kernel's built struct module size at run time` /
-`exec format error` — confirmed on a real node. An earlier revision disabled BTF to work
-around a `pahole` crash on `vmlinux.unstripped`; that crash no longer reproduces with the
-current toolchain pin, so there's nothing left to work around.
-
-One thing that still produces a 0-byte-module extension that installs happily if gotten
-wrong:
-
-- **No `Module.symvers`** — `modules_prepare` doesn't produce one, and a full
-  `make modules` would double the build for something never shipped. Without it modpost
-  turns every imported kernel symbol into a hard `undefined!`, so `build-module.sh` sets
-  `KBUILD_MODPOST_WARN=1`. The kernel tolerates the resulting module having no
-  `__versions` section, at the cost of symbol-CRC checking — `check-pins` covers that gap
-  instead. To get CRC checking back, add `make -j $(nproc) modules` to `prepare-kernel.sh`.
+`UPSTREAM_EXTENSIONS_REF` (which commit of `siderolabs/extensions` packages the module
+into an actual system extension) isn't coupled to the Talos version the same way — it
+only consumes an OCI image reference, not source-level kernel state — so it can be bumped
+independently, whenever.
 
 ## Module signing
 
-The module isn't signed by the key the stock Talos kernel trusts (that key is a
-build-time throwaway the kernel generates fresh on every build and never exports — not
-reproducible by us, and not fixable by switching build tooling), so any image baking it
-in needs to turn off `sig_enforce`. It must be baked into the image, not set via machine
-config: it's a kernel argument, and `extraKernelArgs` only takes effect after the install
-that already needs it.
-
-The base installer already carries `module.sig_enforce=1`, and `sig_enforce` is a
-`bool_enable_only` module param — once on, a later `module.sig_enforce=0` on the same
-cmdline is silently ignored (confirmed on a real node: both were in `/proc/cmdline`, but
-`/sys/module/module/parameters/sig_enforce` stayed `Y`). The fix is `-module.sig_enforce`
-(the `-` prefix), which removes the base arg instead of losing an override race against it.
+See `docs/kernel-signing.md` for the full story. Short version: the module is compiled
+inside the same BuildKit session as the kernel package (`make kernel`, below), so it gets
+signed by the same per-build key the running kernel's `CONFIG_SYSTEM_TRUSTED_KEYRING`
+trusts — no `sig_enforce=0`, no MOK enrollment, no persistent PKI of our own to manage.
 
 ## Usage
 
-Every target below needs `TARGET_ARCH=amd64` or `TARGET_ARCH=arm64` (no default — see
-"Cross-architecture"); `export TARGET_ARCH=amd64` once, or pass it per invocation.
+Every target below except `kernel`/`checkout-*`/`release`/`push-manifest`/`distclean`/
+`help`/`hashes`/`check-pins` needs `TARGET_ARCH=amd64` or `TARGET_ARCH=arm64` (no default
+— `export TARGET_ARCH=amd64` once, or pass it per invocation):
 
 ```sh
 make print-config   # resolved pins, arch, image names
-make preflight      # podman/git/curl/cargo/cargo-zigbuild present, >=40G free
-make agents         # cross-compile ext-awg from ../talos-extensions, stage into the rootfs
-make all            # toolchain -> kernel -> module -> agents -> extension image
-make installer      # publish the extension, then bake it into an installer (this arch)
-make push           # publish this arch's installer tag
-make shell          # interactive shell in the build environment, for debugging
+make preflight       # docker/buildx/git/curl/jq/cargo/cargo-zigbuild present, >=40G free
+make kernel           # build the kernel + amneziawg module together, push both (arch-independent)
+make agents            # cross-compile ext-awg from ../talos-extensions
+make extension           # package module + ext-awg into a Talos system extension (this arch)
+make all                  # preflight -> check-pins -> extension, the full local build
+make installer              # bake an installer image (this arch) - what `talosctl upgrade` pulls
+make push                     # publish this arch's installer tag
+make shell                     # n/a - see docs/kernel-signing.md for interactive debugging
 ```
 
 `installer`/`push` work on one `TARGET_ARCH` at a time and tag/publish
-`installer-<talos>-awg-<arch>`. The tag nodes actually pull is the arch-less
-`installer-<talos>-awg`, a multi-arch manifest combining whichever of those are in the
-registry:
+`installer-<talos>-awg-<agents-sha>-<arch>` (`<agents-sha>` is `../talos-extensions`'
+own commit - included so a rebuild after fixing something there always gets a genuinely
+new tag; re-pushing under a tag that's already been pushed before has been observed to
+*not* reliably reach a node on `talosctl upgrade`, confirmed directly - see AGENTS.md).
+The tag nodes actually pull is the arch-less `installer-<talos>-awg-<agents-sha>`, a
+multi-arch manifest combining whichever of those are in the registry:
 
 ```sh
 make release   # builds+pushes every ARCHS entry, then publishes the multi-arch tag
 ```
 
-Then, per node:
+Then, per node (check `make print-config` for the exact current tag):
 
 ```sh
-talosctl -n <node> upgrade --image docker.io/ffaxl/talos:installer-<talos>-awg
+talosctl -n <node> upgrade --image docker.io/ffaxl/talos:installer-<talos>-awg-<agents-sha>
 ```
 
 Bare-metal `dd` installs are assembled elsewhere, from this published installer tag —
@@ -144,26 +134,30 @@ out of scope here.
 Image Factory only assembles extensions from its own catalog by name — there's no way to
 feed it an arbitrary image. So the extension is baked into the installer locally, by
 `make installer`, via `imager`'s stdin profile format rather than its
-`--system-extension-image` flag (broken in v1.13.7 — always ends up with an empty image
-reference).
+`--system-extension-image` flag.
 
-That profile's `systemExtensions` only takes a registry reference, not a local path — so
-`bake` tags the just-built extension as `extension-<talos>-awg-<arch>` and pushes it to
-`docker.io/ffaxl/talos` before every `make installer` invokes imager. Nodes never pull
-this tag themselves: they get everything already baked into the installer's initramfs.
+That profile's `systemExtensions` only takes a registry reference, not a local path —
+`make extension` already pushes the just-built extension straight to
+`docker.io/ffaxl/talos` (via `docker buildx build --push`), so it's already there by the
+time `make installer` invokes imager. Nodes never pull this tag themselves: they get
+everything already baked into the installer's initramfs.
 
-`baseInstaller` is different: it carries both an `ociPath` (what's actually read — a
-local OCI layout `make installer` exports with `podman push --format oci`, patching a
-`platform` onto the index with `jq` since podman's `oci:` transport doesn't stamp one and
-imager needs it to pick the arch) and an `imageRef`, used only to *name* the image inside
-the output tarball. Pointing that at our own `INSTALLER_IMAGE` (instead of the real
-`ghcr.io/siderolabs/installer:<ver>`) means `podman load` writes our tag directly, and
-the real upstream tag is never touched.
+`baseInstaller` is different: it carries both an `ociPath` (what's actually read for
+everything except kernel/initramfs — rootfs, sd-boot/sd-stub etc — a local OCI layout
+`make installer` exports via `docker buildx build --output=type=oci`, patching a
+`platform` onto the index with `jq` since that exporter doesn't stamp one and imager
+needs it to pick the arch) and an `imageRef`, used only to *name* the image inside the
+output tarball. Pointing that at our own `INSTALLER_IMAGE` (instead of the real
+`ghcr.io/siderolabs/installer:<ver>`) means `docker load` writes our tag directly, and the
+real upstream tag is never touched.
 
-Requires podman, git, curl, jq, ~40 GB free and a couple of hours of CPU (the kernel is
-the slow part; the module itself takes seconds). The prepared kernel tree is kept in
-`build/kernel-$TARGET_ARCH` and reused — `make module` after a code change is fast.
-`make clean` keeps it; `make distclean` doesn't.
+Kernel and initramfs are handled separately from `baseInstaller` entirely — see
+`docs/kernel-signing.md`, "Getting the signed kernel into the final installer" for why
+and how.
+
+Requires Docker (with `buildx`), git, curl, jq, ~40 GB free and a couple of hours of CPU
+for `make kernel` (the slow step, shared once across both arches); everything after it is
+fast.
 
 Loading the module also needs the machine config to ask for it:
 
@@ -174,28 +168,31 @@ machine:
       - name: amneziawg
 ```
 
-The installer is ~192 MB (~103 MB UKI + ~43 MB installer binary); the module itself adds
-~240 KB — comparing sizes with/without the extension is a quick sanity check that it went
-in.
-
 ## Verifying a build
 
 An extension with no module in it installs happily and only shows up later as "the
-module never loaded" — check the artifact, not just the exit code:
+module never loaded" — check the artifact, not just the exit code. The
+`amneziawg-pkg`/`awg` `pkg.yaml` packages both assert this themselves at build time
+(`grep -FL '~Module signature appended~'` over every `.ko`, the same check siderolabs'
+own zfs/gasket-driver packages run) — a build that completes has already proven its
+module is signed. On top of that:
 
 ```sh
-file build/out-amd64/rootfs/usr/lib/modules/*/extras/amneziawg.ko   # ELF ... x86-64
-modinfo <the .ko> | grep vermagic                                   # must match the nodes
-podman image inspect <image> --format '{{.Architecture}}'
+docker buildx imagetools inspect <image>                            # arch, manifest
 talosctl -n <node> get extensions                                   # amneziawg <ver>
 talosctl -n <node> read /proc/modules | grep amneziawg
+talosctl -n <node> dmesg | grep -i "amneziawg\|sig"                 # no "unsigned module" anywhere
 ```
 
 ## Bumping
 
 **Talos:** set `TALOS_VERSION`, update `UPSTREAM_PKGS_REF` to whatever the command under
-"Pinning" returns, `make check-pins`, then `make distclean && make all TARGET_ARCH=<arch>`
-(the kernel tree must be rebuilt).
+"Pinning" returns, `make check-pins`, then `make distclean && make all TARGET_ARCH=<arch>`.
 
-**AmneziaWG:** set `AWG_REF`, run `make hashes`, paste the value back,
-`make module TARGET_ARCH=<arch>`.
+**AmneziaWG:** set `AWG_REF`, run `make hashes`, paste both values back, `make kernel`
+(rebuilds kernel+module together — required, not optional, since a lone `amneziawg-pkg`
+rebuild against a stale cached `kernel-build` stage would still work correctly, but
+there's no way to rebuild *only* the module and skip the kernel half of the shared build).
+
+**siderolabs/extensions:** bump `UPSTREAM_EXTENSIONS_REF` freely; it only needs to
+resolve, no coupling to the Talos version.
