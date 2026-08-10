@@ -115,6 +115,13 @@ agents: ## Cross-compile the ext-awg extension-service daemon (../talos-extensio
 # git SHA is included specifically so a rebuild after fixing something in that repo is
 # never mistaken for a repeat of an earlier build under some cache, anywhere in the
 # pipeline, keyed on this string).
+#
+# Field order matters, not just for readability: siderolabs' own extensions-validator
+# only accepts a handful of exact version regexes, and this hash-first-then-"v"+semver
+# shape happens to satisfy `commitBuildArgRegex` in its cmd/validate.go. Confirmed the
+# hard way in ../talos-router-extension, where the equivalent value in a different field
+# order (version-first) was rejected outright - see that repo's Makefile for the exact
+# regex and why.
 EXT_VERSION := $(AWG_SHORT)-$(TALOS_VERSION)-$(AGENTS_SHA)
 
 .PHONY: extension
