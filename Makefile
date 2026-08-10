@@ -4,7 +4,7 @@
 # extension uses. See docs/kernel-signing.md for why this repo doesn't build or sign
 # anything itself; it only packages an already-signed module.
 #
-# One of four repos in a split pipeline - see README, "This is one of four repos".
+# One of five repos in a split pipeline - see README, "This is one of five repos".
 #
 # Needs Docker + `docker buildx` (siderolabs' real `bldr` toolchain, a custom BuildKit
 # frontend podman/buildah can't run).
@@ -44,7 +44,7 @@ AWG_SHORT := $(shell printf '%.7s' '$(AWG_REF)')
 # ../talos-kernel's own DOCKER_NS/PKGS_TAG formula, reconstructed here - must match that
 # repo's versions.env (TALOS_VERSION, AWG_REF) or this points at a kernel package that
 # doesn't exist / doesn't match what nodes actually boot. See README, "This is one of
-# four repos".
+# five repos".
 PKGS_NS  := docker.io/ffaxl
 PKGS_TAG := $(TALOS_VERSION)-awg-$(AWG_SHORT)
 

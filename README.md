@@ -11,12 +11,13 @@ module signature enforcement (`sig_enforce`) stays on — no workaround, no key 
 to manage. See `docs/kernel-signing.md` for how this repo consumes that (built in
 `../talos-kernel`, not here).
 
-## This is one of four repos
+## This is one of five repos
 
 ```
 talos-kernel                            -> signed kernel + amneziawg-pkg
 talos-awg-extension        (this repo)  -> amneziawg system extension (pulls amneziawg-pkg)
 talos-router-extension                  -> router system extension (no kernel dependency)
+talos-nftables-extension                -> nftables system extension (no kernel dependency)
 talos-installer                         -> assembles kernel + N extensions into an installer
 ```
 

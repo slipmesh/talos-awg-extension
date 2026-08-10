@@ -36,7 +36,7 @@ extension's metadata the same way `zfs`'s own do.
 `PKGS_PREFIX`/`PKGS` build-args (see the `extension` target in the `Makefile`) point at
 `../talos-kernel`'s published `amneziawg-pkg` image - reconstructed from this repo's own
 `TALOS_VERSION`/`AWG_REF` pins, which must match that repo's `versions.env` exactly (see
-README, "This is one of four repos"). If they don't match, `docker-amneziawg` fails to
+README, "This is one of five repos"). If they don't match, `docker-amneziawg` fails to
 resolve the dependency image outright - a fast, loud failure, not a silent wrong-kernel
 mismatch.
 
