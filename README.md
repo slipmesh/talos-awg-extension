@@ -63,8 +63,8 @@ extension.
 machine's:
 
 ```sh
-make extension TARGET_ARCH=amd64 RELEASE_TAG=v0.1.0+awgce16310
-make extension TARGET_ARCH=arm64 RELEASE_TAG=v0.1.0+awgce16310
+make extension TARGET_ARCH=amd64 RELEASE_TAG=v0.1.0+talos1.13.8
+make extension TARGET_ARCH=arm64 RELEASE_TAG=v0.1.0+talos1.13.8
 ```
 
 Building for a foreign target arch runs under QEMU emulation (`docker buildx` registers
@@ -90,7 +90,7 @@ Every target below except `distclean`/`help`/`hashes`/`checkout-extensions` need
 (no defaults — `export TARGET_ARCH=amd64` once, or pass either per invocation). Like
 `../bird`, `RELEASE_TAG` *is* the published image tag (`+` swapped for `-`, since OCI tags
 can't contain `+`) - see `cliff.toml`'s `tag_pattern` for the exact shape
-(`vX.Y.Z[+awg<short-ref>]`).
+(`vX.Y.Z[+talosA.B.C]`).
 
 ```sh
 make print-config   # resolved pins, arch, image names

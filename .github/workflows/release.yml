@@ -1,4 +1,4 @@
-# Triggered by a `vX.Y.Z[+awg<short-ref>]` tag - like ../bird, the release tag *is* the published
+# Triggered by a `vX.Y.Z[+talosA.B.C]` tag - like ../bird, the release tag *is* the published
 # image tag (`+` swapped for `-`; see cliff.toml's tag_pattern and the Makefile's
 # RELEASE_TAG_SAFE). `make agents`/`make extension` need ../talos-extensions checked out as a real
 # sibling directory (Makefile: `test -d $(AGENTS_DIR) || exit 1`), so both repos are checked out

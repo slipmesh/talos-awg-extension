@@ -28,7 +28,7 @@ ifeq ($(TARGET_ARCH),)
 endif
 ifeq ($(RELEASE_TAG),)
   ifneq ($(filter-out distclean help hashes checkout-extensions,$(_GOALS)),)
-    $(error RELEASE_TAG not set - pass RELEASE_TAG=v0.1.0+awgce16310, the git tag this build is released under)
+    $(error RELEASE_TAG not set - pass RELEASE_TAG=v0.1.0+talos1.13.8, the git tag this build is released under)
   endif
 endif
 
