@@ -26,6 +26,11 @@ ifeq ($(TARGET_ARCH),)
     $(error TARGET_ARCH not set - pass TARGET_ARCH=amd64 or TARGET_ARCH=arm64)
   endif
 endif
+ifeq ($(RELEASE_TAG),)
+  ifneq ($(filter-out distclean help hashes checkout-extensions,$(_GOALS)),)
+    $(error RELEASE_TAG not set - pass RELEASE_TAG=v0.1.0+awgce16310, the git tag this build is released under)
+  endif
+endif
 
 BUILD_DIR      := build
 EXTENSIONS_DIR := $(BUILD_DIR)/extensions
@@ -41,18 +46,25 @@ AGENTS_SHA              := $(shell git -C $(AGENTS_DIR) rev-parse --short HEAD 2
 
 AWG_SHORT := $(shell printf '%.7s' '$(AWG_REF)')
 
-# ../talos-kernel's own DOCKER_NS/PKGS_TAG formula, reconstructed here - must match that
-# repo's versions.env (TALOS_VERSION, AWG_REF) or this points at a kernel package that
-# doesn't exist / doesn't match what nodes actually boot. See README, "This is one of
-# five repos".
+# ../talos-kernel now tags its published images by its own release tag (see that repo's
+# Makefile/RELEASE_TAG_SAFE, mirroring ../bird) rather than a TALOS_VERSION+AWG_REF
+# reconstruction - so versions.env's KERNEL_RELEASE pin names the exact talos-kernel
+# release this build consumes, the same discipline BIRD_VERSION/AWG_REF already use for
+# their own upstreams. Bump it by hand whenever you want to pick up a new talos-kernel
+# release; TALOS_VERSION/AWG_REF stay as informational cross-checks (still folded into
+# EXT_VERSION below) that the two repos' pins haven't silently drifted apart.
 PKGS_NS  := ghcr.io/slipmesh
-PKGS_TAG := $(TALOS_VERSION)-awg-$(AWG_SHORT)
+PKGS_TAG := $(subst +,-,$(KERNEL_RELEASE))
 
-# Tag includes AGENTS_SHA (../talos-extensions' own commit) so a rebuild after fixing
-# something there always gets a genuinely new tag - re-pushing under an unchanged tag has
-# been observed to not reliably reach a node on `talosctl upgrade` (same digest hash
-# across two different builds under one tag) - see AGENTS.md.
-EXT_IMAGE := $(IMAGE):extension-$(TALOS_VERSION)-awg-$(AGENTS_SHA)-$(TARGET_ARCH)
+# Registry tag follows ../bird's own convention: the git release tag *is* the image tag
+# (`+` swapped for `-`, since OCI tags can't contain `+`) - RELEASE_TAG is required, not
+# derived from AGENTS_SHA, so a rebuild against unchanged pins still needs an explicit new
+# release to publish under (the old AGENTS_SHA-keyed scheme's staleness fix - re-pushing
+# under an unchanged tag has been observed to not reliably reach a node on `talosctl
+# upgrade`, same digest hash across two different builds under one tag - is now just "cut
+# a new release"; see AGENTS.md).
+RELEASE_TAG_SAFE := $(subst +,-,$(RELEASE_TAG))
+EXT_IMAGE := $(IMAGE):$(RELEASE_TAG_SAFE)-$(TARGET_ARCH)
 
 ##@ General
 
@@ -67,8 +79,10 @@ print-config: ## Show the resolved pins, arch and image names.
 	@echo "talos            : $(TALOS_VERSION)"
 	@echo "extensions ref   : $(UPSTREAM_EXTENSIONS_REF)"
 	@echo "awg ref          : $(AWG_REF) ($(AWG_SHORT))"
+	@echo "kernel release   : $(KERNEL_RELEASE)"
 	@echo "host arch        : $$(uname -m)"
 	@echo "target arch      : $(TARGET_ARCH)"
+	@echo "release tag      : $(RELEASE_TAG)"
 	@echo "amneziawg pkg    : $(PKGS_NS)/amneziawg-pkg:$(PKGS_TAG)  (must exist - built by ../talos-kernel)"
 	@echo "extension image  : $(EXT_IMAGE)"
 

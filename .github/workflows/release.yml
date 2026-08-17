@@ -1,12 +1,14 @@
-# Triggered by a `vX.Y.Z` tag. `make agents`/`make extension` need ../talos-extensions checked
-# out as a real sibling directory (Makefile: `test -d $(AGENTS_DIR) || exit 1`), so both repos are
-# checked out side by side under `$GITHUB_WORKSPACE` and every step below runs with
-# `working-directory: talos-awg-extension` to make that relative path resolve correctly.
+# Triggered by a `vX.Y.Z[+awg<short-ref>]` tag - like ../bird, the release tag *is* the published
+# image tag (`+` swapped for `-`; see cliff.toml's tag_pattern and the Makefile's
+# RELEASE_TAG_SAFE). `make agents`/`make extension` need ../talos-extensions checked out as a real
+# sibling directory (Makefile: `test -d $(AGENTS_DIR) || exit 1`), so both repos are checked out
+# side by side under `$GITHUB_WORKSPACE` and every step below runs with `working-directory:
+# talos-awg-extension` to make that relative path resolve correctly.
 #
 # Unlike router/nftables, this repo doesn't build its own pkgs stage - it *consumes* an already-
-# published amneziawg-pkg image from ../talos-kernel (reconstructed by PKGS_NS/PKGS_TAG from this
-# repo's own TALOS_VERSION/AWG_REF pins). This tag push only succeeds if talos-kernel's own
-# release for the matching TALOS_VERSION/AWG_REF has already been pushed to ghcr.io/slipmesh -
+# published amneziawg-pkg image from ../talos-kernel, named by versions.env's KERNEL_RELEASE pin
+# (that repo's own release tag, bumped by hand - see versions.env). This tag push only succeeds if
+# the talos-kernel release KERNEL_RELEASE points at has already been pushed to ghcr.io/slipmesh -
 # `make extension`'s bldr invocation will fail loudly (missing base image) if not, same failure
 # mode as running it locally before `make kernel` in ../talos-kernel.
 #
@@ -73,4 +75,4 @@ jobs:
 
       - name: Build and push extension image
         working-directory: talos-awg-extension
-        run: make extension TARGET_ARCH=${{ matrix.arch }}
+        run: make extension TARGET_ARCH=${{ matrix.arch }} RELEASE_TAG=${{ github.ref_name }}

@@ -63,8 +63,8 @@ extension.
 machine's:
 
 ```sh
-make extension TARGET_ARCH=amd64
-make extension TARGET_ARCH=arm64
+make extension TARGET_ARCH=amd64 RELEASE_TAG=v0.1.0+awgce16310
+make extension TARGET_ARCH=arm64 RELEASE_TAG=v0.1.0+awgce16310
 ```
 
 Building for a foreign target arch runs under QEMU emulation (`docker buildx` registers
@@ -72,8 +72,11 @@ this automatically) rather than natively.
 
 ## Pinning
 
-`TALOS_VERSION`/`AWG_REF` must match `../talos-kernel`'s `versions.env` exactly - they're
-used only to reconstruct that repo's `amneziawg-pkg` tag, not to build anything here.
+`TALOS_VERSION`/`AWG_REF` should match `../talos-kernel`'s `versions.env` - purely an
+informational cross-check now (still folded into `EXT_VERSION`), not used to build
+anything here. `KERNEL_RELEASE` is what actually names the `amneziawg-pkg` image this
+build consumes - it's `../talos-kernel`'s own release tag (see that repo's Makefile),
+bumped by hand after a new talos-kernel release.
 
 `UPSTREAM_EXTENSIONS_REF` (which commit of `siderolabs/extensions` packages the module
 into an actual system extension) isn't coupled to the Talos version — it only consumes an
@@ -83,8 +86,11 @@ whenever; `make checkout-extensions` just needs it to resolve.
 ## Usage
 
 Every target below except `distclean`/`help`/`hashes`/`checkout-extensions` needs
-`TARGET_ARCH=amd64` or `TARGET_ARCH=arm64` (no default — `export TARGET_ARCH=amd64` once,
-or pass it per invocation):
+`TARGET_ARCH=amd64` or `TARGET_ARCH=arm64` and `RELEASE_TAG=<the git tag being released>`
+(no defaults — `export TARGET_ARCH=amd64` once, or pass either per invocation). Like
+`../bird`, `RELEASE_TAG` *is* the published image tag (`+` swapped for `-`, since OCI tags
+can't contain `+`) - see `cliff.toml`'s `tag_pattern` for the exact shape
+(`vX.Y.Z[+awg<short-ref>]`).
 
 ```sh
 make print-config   # resolved pins, arch, image names
@@ -94,9 +100,9 @@ make extension           # package module + ext-awg into a Talos system extensio
 make all                   # preflight -> extension, the full local build
 ```
 
-`make extension` pushes straight to `docker.io/ffaxl/talos` and prints the tag —
-`../talos-installer` needs that ref to bundle it into an installer. Build both arches you
-need before handing off to `talos-installer`.
+`make extension` pushes straight to `ghcr.io/slipmesh/talos-awg-extension` and prints the
+tag — `../talos-installer` needs that ref to bundle it into an installer. Build both
+arches you need before handing off to `talos-installer`.
 
 ## Verifying a build
 
@@ -117,12 +123,14 @@ that repo's README.
 
 ## Bumping
 
-**Talos/AmneziaWG:** bump `../talos-kernel` first (its own README, "Bumping"), then copy
-its new `TALOS_VERSION`/`AWG_REF` here, then `make extension TARGET_ARCH=<arch>`.
+**Talos/AmneziaWG:** bump `../talos-kernel` first (its own README, "Bumping") and cut a
+release there, then set `KERNEL_RELEASE` here to that release's tag (and copy
+`TALOS_VERSION`/`AWG_REF` too, for the cross-check), then `make extension
+TARGET_ARCH=<arch> RELEASE_TAG=<this repo's own new release tag>`.
 
 **siderolabs/extensions:** bump `UPSTREAM_EXTENSIONS_REF` freely; it only needs to
 resolve, no coupling to the Talos version.
 
 **ext-awg:** any commit in `../talos-extensions` — `make extension` always picks up
-whatever's currently checked out there and tags accordingly (see `AGENTS_SHA` in the
-`Makefile`), no version bump needed here.
+whatever's currently checked out there (see `AGENTS_SHA` in the `Makefile`, still folded
+into `EXT_VERSION`); cut a new release (`RELEASE_TAG`) to publish under a fresh tag.
