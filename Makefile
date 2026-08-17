@@ -45,7 +45,7 @@ AWG_SHORT := $(shell printf '%.7s' '$(AWG_REF)')
 # repo's versions.env (TALOS_VERSION, AWG_REF) or this points at a kernel package that
 # doesn't exist / doesn't match what nodes actually boot. See README, "This is one of
 # five repos".
-PKGS_NS  := docker.io/ffaxl
+PKGS_NS  := ghcr.io/slipmesh
 PKGS_TAG := $(TALOS_VERSION)-awg-$(AWG_SHORT)
 
 # Tag includes AGENTS_SHA (../talos-extensions' own commit) so a rebuild after fixing

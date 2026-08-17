@@ -1,0 +1,76 @@
+# Triggered by a `vX.Y.Z` tag. `make agents`/`make extension` need ../talos-extensions checked
+# out as a real sibling directory (Makefile: `test -d $(AGENTS_DIR) || exit 1`), so both repos are
+# checked out side by side under `$GITHUB_WORKSPACE` and every step below runs with
+# `working-directory: talos-awg-extension` to make that relative path resolve correctly.
+#
+# Unlike router/nftables, this repo doesn't build its own pkgs stage - it *consumes* an already-
+# published amneziawg-pkg image from ../talos-kernel (reconstructed by PKGS_NS/PKGS_TAG from this
+# repo's own TALOS_VERSION/AWG_REF pins). This tag push only succeeds if talos-kernel's own
+# release for the matching TALOS_VERSION/AWG_REF has already been pushed to ghcr.io/slipmesh -
+# `make extension`'s bldr invocation will fail loudly (missing base image) if not, same failure
+# mode as running it locally before `make kernel` in ../talos-kernel.
+#
+# EXT_IMAGE already embeds $(TARGET_ARCH) as its own tag suffix (…-amd64 / …-arm64), not a
+# combined multi-arch manifest - so this is a plain per-arch matrix, no digest-merge job needed
+# (unlike cni-config's release.yml, which does build a single multi-arch manifest).
+name: Release extension image
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            rust_target: x86_64-unknown-linux-musl
+          - arch: arm64
+            rust_target: aarch64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: talos-awg-extension
+
+      # Pinned to talos-extensions' default branch tip, matching what a local dev build already
+      # does with a plain `../talos-extensions` sibling checkout (whatever's currently checked
+      # out there) - no separate version pin to keep in sync here.
+      - uses: actions/checkout@v4
+        with:
+          repository: slipmesh/talos-extensions
+          path: talos-extensions
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: talos-extensions
+          key: ${{ matrix.rust_target }}
+
+      - uses: mlugg/setup-zig@v2
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push extension image
+        working-directory: talos-awg-extension
+        run: make extension TARGET_ARCH=${{ matrix.arch }}
