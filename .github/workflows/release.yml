@@ -15,6 +15,14 @@
 # EXT_IMAGE already embeds $(TARGET_ARCH) as its own tag suffix (…-amd64 / …-arm64), not a
 # combined multi-arch manifest - so this is a plain per-arch matrix, no digest-merge job needed
 # (unlike cni-config's release.yml, which does build a single multi-arch manifest).
+#
+# Each arch runs on its own native runner (ubuntu-24.04-arm for arm64, free for public repos)
+# rather than emulating the foreign arch under QEMU on a shared amd64 runner - avoids QEMU
+# overhead in the bldr/Docker packaging step entirely (confirmed a real problem on
+# ../talos-kernel's own arm64 leg, which blew GitHub Actions' 6h job timeout doing this for a
+# full kernel build - this repo's own build is much lighter, but there's no reason to still pay
+# the emulation cost once native runners are available). No docker/setup-qemu-action needed any
+# more since neither job ever builds a foreign platform.
 name: Release extension image
 
 on:
@@ -27,7 +35,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
@@ -35,8 +43,10 @@ jobs:
         include:
           - arch: amd64
             rust_target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
           - arch: arm64
             rust_target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,7 +74,6 @@ jobs:
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild --locked
 
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
