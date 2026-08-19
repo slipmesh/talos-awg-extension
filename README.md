@@ -63,8 +63,8 @@ extension.
 machine's:
 
 ```sh
-make extension TARGET_ARCH=amd64 RELEASE_TAG=v0.1.0+talos1.13.8
-make extension TARGET_ARCH=arm64 RELEASE_TAG=v0.1.0+talos1.13.8
+make extension TARGET_ARCH=amd64 RELEASE_TAG=v0.1.2+talos1.13.9
+make extension TARGET_ARCH=arm64 RELEASE_TAG=v0.1.2+talos1.13.9
 ```
 
 Building for a foreign target arch runs under QEMU emulation (`docker buildx` registers
