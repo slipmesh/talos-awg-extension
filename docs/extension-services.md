@@ -10,8 +10,9 @@ Since the `installer` republish that ships it, this extension carries two things
    node - mesh links to other nodes, road-warrior client termination, or both. Without it, the
    module loads but nothing ever brings an interface up.
 
-The `ext-awg` binary itself is built in the sibling repo `../talos-extensions` (a plain Rust
-workspace, no Talos-packaging concerns of its own - see its README/AGENTS.md) and cross-compiled +
+The `ext-awg` binary itself is built in the sibling repo
+[talos-extensions](https://github.com/slipmesh/talos-extensions) (a plain Rust workspace, no
+Talos-packaging concerns of its own - see its README) and cross-compiled +
 staged into this extension's rootfs by `make agents` (a new step `make extension` now depends on -
 see the top-level README's "Usage" for the full target list). One extension, one version, one
 `talosctl get extensions` - there's no separate `ext-awg` release to track.
@@ -22,9 +23,9 @@ Talos nodes need mesh connectivity before kubelet/the Kubernetes API is reachabl
 multi-site WAN mesh, the API server may only be reachable *through* this overlay, so bringing up
 interfaces can't depend on the cluster already being up. `ext-awg` reads a config baked directly
 into the node's machine config instead of watching any CRD, so it works from the very first boot,
-independent of Kubernetes entirely. See `../talos-extensions/README.md` for the full design
-rationale and `../talos-extensions/AGENTS.md` for the invariants a future change here must not
-break (no Kubernetes dependency, no local key generation, no status files, etc).
+independent of Kubernetes entirely. See `talos-extensions`' README for the full design
+rationale, and treat its invariants as load-bearing for anything changed here: no Kubernetes
+dependency, no local key generation, no status files.
 
 ## Config: one interface shape for both mesh and road-warrior use
 
@@ -104,8 +105,8 @@ machine:
 
 Multi-document machine config YAML - the `ExtensionServiceConfig` document's `name` must match the
 service name (`awg`), and its `configFiles[].mountPath` must be exactly
-`/etc/talos-extensions/awg.yaml` (the fixed path `ext-awg` reads - not configurable, see
-`../talos-extensions/AGENTS.md`'s "no env vars, no CLI flags" invariant):
+`/etc/talos-extensions/awg.yaml` (the fixed path `ext-awg` reads - deliberately not
+configurable: no env vars, no CLI flags):
 
 ```yaml
 # ... the rest of a normal v1alpha1 machine config ...

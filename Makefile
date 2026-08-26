@@ -37,7 +37,7 @@ EXTENSIONS_DIR := $(BUILD_DIR)/extensions
 
 # The `awg` Talos extension-service daemon (mesh + roadwarriors interface config) lives in a
 # sibling repo, not here - this repo only cross-compiles it and hands the binary to the
-# siderolabs/extensions checkout for packaging. See that repo's README/AGENTS.md for what it does.
+# siderolabs/extensions checkout for packaging. See that repo's README for what it does.
 AGENTS_DIR              := ../talos-extensions
 AGENT_RUST_TARGET_amd64 := x86_64-unknown-linux-musl
 AGENT_RUST_TARGET_arm64 := aarch64-unknown-linux-musl
@@ -62,7 +62,7 @@ PKGS_TAG := $(subst +,-,$(KERNEL_RELEASE))
 # release to publish under (the old AGENTS_SHA-keyed scheme's staleness fix - re-pushing
 # under an unchanged tag has been observed to not reliably reach a node on `talosctl
 # upgrade`, same digest hash across two different builds under one tag - is now just "cut
-# a new release"; see AGENTS.md).
+# a new release").
 RELEASE_TAG_SAFE := $(subst +,-,$(RELEASE_TAG))
 EXT_IMAGE := $(IMAGE):$(RELEASE_TAG_SAFE)-$(TARGET_ARCH)
 
