@@ -11,9 +11,7 @@
 # `name:` below must match manifest.yaml.tmpl's `metadata.name` (both `amneziawg`) - not
 # cosmetic: extensions-validator's --pkg-name check (the `test:` step below) requires
 # bldr's own PKG_NAME env var, derived from this field, to equal the manifest's
-# metadata.name, or the build fails. Confirmed the hard way (`name: awg` here against
-# `metadata.name: amneziawg` there -> "pkg name does not match extension name: awg !=
-# amneziawg").
+# metadata.name, or the build fails with "pkg name does not match extension name".
 name: amneziawg
 variant: scratch
 shell: /bin/bash
