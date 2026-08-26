@@ -13,11 +13,16 @@ to manage. See `docs/kernel-signing.md` for how this repo consumes that (built i
 
 ## This is one of five repos
 
-- [talos-kernel](https://github.com/slipmesh/talos-kernel) — signed kernel + `amneziawg-pkg`
-- [talos-awg-extension](https://github.com/slipmesh/talos-awg-extension) — amneziawg system extension (pulls `amneziawg-pkg`) — **this repo**
-- [talos-router-extension](https://github.com/slipmesh/talos-router-extension) — router system extension (no kernel dependency)
-- [talos-nftables-extension](https://github.com/slipmesh/talos-nftables-extension) — nftables system extension (no kernel dependency)
-- [talos-installer](https://github.com/slipmesh/talos-installer) — assembles a kernel + N extensions into an installer
+- [talos-kernel](https://github.com/slipmesh/talos-kernel) —
+  signed kernel + `amneziawg-pkg`
+- [talos-awg-extension](https://github.com/slipmesh/talos-awg-extension) —
+  amneziawg system extension (pulls `amneziawg-pkg`) — **this repo**
+- [talos-router-extension](https://github.com/slipmesh/talos-router-extension) —
+  router system extension (no kernel dependency)
+- [talos-nftables-extension](https://github.com/slipmesh/talos-nftables-extension) —
+  nftables system extension (no kernel dependency)
+- [talos-installer](https://github.com/slipmesh/talos-installer) —
+  assembles a kernel + N extensions into an installer
 
 Each repo builds and publishes independently — none check out or depend on each other's
 source, only on each other's published OCI tags. This repo needs `talos-kernel`'s
@@ -48,7 +53,7 @@ module into one — the same one their own ZFS extension uses:
 `siderolabs/extensions`' own `pkg.yaml`/`bldr` pipeline, pulling the module in as a plain
 OCI-image dependency (no recompilation, so the signature travels untouched).
 
-```
+```text
 versions.env             every pin: Talos version, extensions commit, AWG ref, image
 patches/
   extensions/amneziawg/  overlaid onto a siderolabs/extensions checkout - packages the

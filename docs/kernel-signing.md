@@ -8,8 +8,8 @@ turning an already-signed module into an actual Talos system extension.
 
 ## Packaging: `siderolabs/extensions`, not a local Dockerfile
 
-The module coming out of `../talos-kernel`'s `amneziawg-pkg` is already signed correctly
-- turning it into an actual Talos system extension is a separate, unrelated concern
+The module coming out of `talos-kernel`'s `amneziawg-pkg` is already signed correctly:
+turning it into an actual Talos system extension is a separate, unrelated concern
 (manifest metadata, the `ext-awg` binary, the container spec), and siderolabs has a
 sanctioned way to do that too: `siderolabs/extensions`, the same repo `zfs`'s own
 userspace-facing half lives in. Its `storage/zfs/pkg.yaml` pulls in `zfs-pkg` (the
