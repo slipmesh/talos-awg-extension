@@ -5,7 +5,30 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and follows [Semantic Versioning](https://semver.org/).
 
-## [0.1.0+talos1.13.8] - 2026-08-18
+## [Unreleased]
+
+### Documentation 📚
+
+- Address the reader who cloned one repository, not five
+- State the facts, drop how they were found
+- State the facts, drop how they were found
+- Scope the QEMU note to local builds
+
+### Miscellaneous 🧹
+
+- Add the standard markdownlint config, fix what it found
+
+## [0.1.2+talos1.13.9] - 2026-08-19
+
+### CI/CD ⚙️
+
+- Pin amd64 matrix runner to ubuntu-24.04, not the floating ubuntu-latest alias
+
+### Fixed 🐛
+
+- Bump to Talos 1.13.9, pull AWG use-after-free fix
+
+## [0.1.1+talos1.13.8] - 2026-08-18
 
 ### Added ✨
 
@@ -17,15 +40,15 @@ and follows [Semantic Versioning](https://semver.org/).
 ### CI/CD ⚙️
 
 - Migrate to ghcr.io/slipmesh, add license files and release CI
-- Tag releases like ../bird: git release tag = published image tag
-- Retag: awg-extension's release suffix is +talosX.Y.Z, not +awg<ref>
+- Tag releases like the bird repo: git release tag = published image tag
+- Retag: awg-extension's release suffix is +talosX.Y.Z, not an awg ref
 - Build arm64 on a native runner instead of QEMU-emulated amd64
 
 ### Changed 🔧
 
 - Drop the throwaway registry - imager reads local OCI layouts directly
 - Require explicit TARGET_ARCH, drop make metal, trim docs to essentials
-- Split kernel build out into ../talos-kernel
+- Split kernel build out into talos-kernel
 
 ### Documentation 📚
 
