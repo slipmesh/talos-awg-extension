@@ -3,7 +3,9 @@
 Packages the **AmneziaWG** Talos system extension — the DPI-obfuscated WireGuard fork's
 kernel module (built and signed in `talos-kernel`), plus `ext-awg`, the extension
 service that actually configures AmneziaWG interfaces (mesh links and/or road-warrior
-peers) on the node from a static config — see `docs/extension-services.md`.
+peers) on the node from a static config, and — when that config asks for it — serves
+per-peer Prometheus metrics, including the last handshake that no off-the-shelf exporter
+can read from this fork's netlink family. See `docs/extension-services.md`.
 
 Builds with **Docker** (`docker buildx`), on any machine, for any target architecture.
 The module is signed by the same key the kernel it ships with trusts, so Talos's own
