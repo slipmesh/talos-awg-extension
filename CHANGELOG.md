@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.4+talos1.13.9] - 2026-08-27
+
+### Added ✨
+
+- Track AmneziaWG 3.1 in the cross-check pin
+
+### Miscellaneous 🧹
+
+- Move markdownlint config to the cli2 file
+- Pin the extensions checkout by release tag, not by commit
+- Derive the extensions ref from the Talos version
+- Package the kernel release that carries AmneziaWG 3.1
+
 ## [0.1.3+talos1.13.9] - 2026-08-26
 
 ### Documentation 📚
