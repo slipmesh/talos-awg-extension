@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.5+talos1.13.9] - 2026-08-27
+
+### Added ✨
+
+- Package an ext-awg that serves per-peer metrics
+
+### Documentation 📚
+
+- Document the ext-awg metrics endpoint
+- Verify road-warrior connectivity from the metrics endpoint
+- Fix the grammar of the metrics sentence
+
 ## [0.1.4+talos1.13.9] - 2026-08-27
 
 ### Added ✨
