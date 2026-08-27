@@ -191,8 +191,11 @@ build/out-<arch>/rootfs/usr/local/lib/containers/awg/awg --help 2>&1 || true   #
   independent of container-log retention).
 - `talosctl -n <node> get links` / `get addresses` - every configured interface, visible via
   Talos's own native network resources, no extra code involved.
-- `talosctl -n <node> get routes` - for road-warrior-style peers, which clients currently have a
-  fresh-enough handshake to have an installed route (i.e. who's actually connected right now).
+- `curl http://<node's mesh loopback>:<metrics port>/metrics` - who is connected right now
+  (`slipmesh_awg_peer_connected`, `ext-awg`'s own verdict for road-warrior-style peers), when each
+  peer last handshook, and per-peer traffic. Prefer this to `talosctl get routes`, which mirrors a
+  resource rather than the kernel's forwarding table and disagrees with it often enough to
+  mislead - `cat /proc/net/route` on the node itself is the FIB.
 - Edit the `ExtensionServiceConfig` document (add/remove an interface or peer, or add/remove a
   peer's `allowed_ips` to flip it between full-tunnel and tracked), `talosctl apply-config`,
   confirm the change is live within seconds without a reboot.
