@@ -39,8 +39,8 @@ is the same shape; the difference is per-peer, driven by whether `allowed_ips` i
 - **peer has an explicit `allowed_ips`** -> exactly those CIDRs as AllowedIPs, handshake polled at
   1Hz, kernel route installed per CIDR while the handshake stays fresher than
   `handshake_stale_secs` (default 180s). Use this for a road-warrior client - the route's presence
-  in the kernel *is* the "currently connected" signal, visible via `talosctl get routes` with no
-  extra code anywhere.
+  in the kernel *is* the "currently connected" signal, reported as `slipmesh_awg_peer_connected`
+  (see *Metrics* below) with no extra code anywhere.
 
 One interface can mix both kinds of peer freely.
 
@@ -69,7 +69,11 @@ interfaces:
     handshake_stale_secs: 180    # optional, this is the default
     peers:
       - public_key: "...client's base64 public key..."
+        name: client-one                  # optional, display only: the `peer_name` metric label
         allowed_ips: ["10.99.0.5/32"]     # tracked (roadwarriors-style)
+
+metrics:                       # optional; omit the whole section and nothing listens
+  listen: "10.62.0.4:9586"     # this node's own mesh loopback address, IPv4 - see Metrics below
 ```
 
 **Private keys always come from this config - `ext-awg` never generates or persists one on the
@@ -77,6 +81,30 @@ node.** Whoever renders machine config is responsible for a node's own per-inter
 same key across every node's config when a single shared identity is needed (e.g. a road-warrior
 interface, so a roaming client sees one consistent server identity regardless of which node
 answers).
+
+## Metrics
+
+With a `metrics` section, `ext-awg` serves `GET /metrics` in Prometheus' OpenMetrics text format
+on that address. Without one it opens no port at all.
+
+Bind it to the node's **own mesh loopback address**, not `0.0.0.0`: that address exists only
+inside the overlay, so the endpoint is unreachable from outside without depending on a firewall
+rule being in place first. It is also what kubelet reports as `InternalIP`, so Prometheus reaches
+it through node discovery plus a relabel to this port - the same way `node-exporter` is reached on
+those addresses.
+
+That address is normally brought up by a *different* extension, and Talos does not order extension
+startup, so `ext-awg` will often reach `bind()` before it exists. The socket is bound with
+`IP_FREEBIND`, which permits that and starts answering once the address appears - no restart
+needed, and no capability beyond what the service already has. Until then the scrape fails and
+Prometheus reports `up=0` for the node, which is the correct reading: a daemon that is not running
+must not look healthy.
+
+Series are `slipmesh_awg_*`, per peer and per interface, labelled `interface`, `kind`
+(`mesh`/`roadwarrior`, decided by `allowed_ips`), `peer` (base64 public key) and `peer_name`.
+Private keys never appear, and neither does a peer's endpoint - a roaming client changes address
+with its network, and every change would mint a new time series. See
+`../../talos-extensions/README.md` for the full metric list.
 
 ## `machine.sysctls`: `net.ipv6.conf.default.keep_addr_on_down`
 
@@ -130,7 +158,10 @@ configFiles:
           private_key: "...redacted..."
           peers:
             - public_key: "...redacted..."
+              name: node-b
               endpoint: "203.0.113.7:51820"
+      metrics:
+        listen: "10.62.0.4:9586"
 ```
 
 Applying this document (`talosctl apply-config`) is itself a config change Talos detects and reacts
