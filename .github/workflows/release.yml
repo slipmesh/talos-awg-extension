@@ -1,7 +1,7 @@
 # Triggered by a `vX.Y.Z[+talosA.B.C]` tag - like ../bird, the release tag *is* the published
 # image tag (`+` swapped for `-`; see cliff.toml's tag_pattern and the Makefile's
-# RELEASE_TAG_SAFE). `make agents`/`make extension` need ../talos-extensions checked out as a real
-# sibling directory (Makefile: `test -d $(AGENTS_DIR) || exit 1`), so both repos are checked out
+# RELEASE_TAG_SAFE). `make daemons`/`make extension` need ../talos-extensions checked out as a real
+# sibling directory (Makefile: `test -d $(DAEMONS_DIR) || exit 1`), so both repos are checked out
 # side by side under `$GITHUB_WORKSPACE` and every step below runs with `working-directory:
 # talos-awg-extension` to make that relative path resolve correctly.
 #
@@ -52,17 +52,17 @@ jobs:
         with:
           path: talos-awg-extension
 
-      - name: Read AGENTS_REF
+      - name: Read DAEMONS_REF
         id: pins
         working-directory: talos-awg-extension
-        run: echo "agents_ref=$(sed -n 's/^AGENTS_REF=//p' versions.env)" >> "$GITHUB_OUTPUT"
+        run: echo "daemons_ref=$(sed -n 's/^DAEMONS_REF=//p' versions.env)" >> "$GITHUB_OUTPUT"
 
-      # fetch-depth: 0 so `make check-agents` can resolve the tag with `git describe`; a
+      # fetch-depth: 0 so `make check-daemons` can resolve the tag with `git describe`; a
       # shallow checkout carries the commit but not the tag that names it.
       - uses: actions/checkout@v4
         with:
           repository: slipmesh/talos-extensions
-          ref: ${{ steps.pins.outputs.agents_ref }}
+          ref: ${{ steps.pins.outputs.daemons_ref }}
           fetch-depth: 0
           path: talos-extensions
 
