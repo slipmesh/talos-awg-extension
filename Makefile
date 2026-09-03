@@ -119,12 +119,17 @@ checkout-extensions: | $(BUILD_DIR) ## Fetch siderolabs/extensions at the pinned
 
 .PHONY: check-daemons
 check-daemons: ## Assert ../talos-extensions is checked out at DAEMONS_REF.
-	@test -d $(DAEMONS_DIR) || { echo "sibling checkout not found: $(DAEMONS_DIR)"; exit 1; }
-	@have=$$(git -C $(DAEMONS_DIR) describe --tags --exact-match HEAD 2>/dev/null || echo "<untagged>"); \
-	if [ "$$have" = "$(DAEMONS_REF)" ]; then \
+	@test -d $(DAEMONS_DIR)/.git || { echo "not a git checkout: $(DAEMONS_DIR)"; exit 1; }
+	@want=$$(git -C $(DAEMONS_DIR) rev-parse --verify --quiet 'refs/tags/$(DAEMONS_REF)^{commit}' || true); \
+	if [ -z "$$want" ]; then \
+	  echo "tag $(DAEMONS_REF) not in $(DAEMONS_DIR) - fetch its tags"; \
+	  exit 1; \
+	fi; \
+	have=$$(git -C $(DAEMONS_DIR) rev-parse --verify HEAD); \
+	if [ "$$have" = "$$want" ]; then \
 	  echo "talos-extensions at $(DAEMONS_REF)"; \
 	else \
-	  echo "MISMATCH: ../talos-extensions is at $$have, DAEMONS_REF is $(DAEMONS_REF)"; \
+	  echo "MISMATCH: $(DAEMONS_DIR) is at $$have, DAEMONS_REF $(DAEMONS_REF) is $$want"; \
 	  echo "the daemon baked into the extension would not be the one this release names"; \
 	  exit 1; \
 	fi

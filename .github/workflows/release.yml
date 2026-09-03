@@ -55,7 +55,10 @@ jobs:
       - name: Read DAEMONS_REF
         id: pins
         working-directory: talos-awg-extension
-        run: echo "daemons_ref=$(sed -n 's/^DAEMONS_REF=//p' versions.env)" >> "$GITHUB_OUTPUT"
+        run: |
+          ref=$(sed -n 's/^DAEMONS_REF=//p' versions.env)
+          [ -n "$ref" ] || { echo 'DAEMONS_REF not found in versions.env'; exit 1; }
+          printf 'daemons_ref=%s\n' "$ref" >> "$GITHUB_OUTPUT"
 
       # fetch-depth: 0 so `make check-daemons` can resolve the tag with `git describe`; a
       # shallow checkout carries the commit but not the tag that names it.
