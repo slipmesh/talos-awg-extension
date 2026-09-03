@@ -35,14 +35,14 @@ reference won't resolve at all (a fast, loud failure, not a silent wrong-kernel 
 
 ### One checkout it does need
 
-`make agents` cross-compiles the daemon out of
+`make daemons` cross-compiles the daemon out of
 [talos-extensions](https://github.com/slipmesh/talos-extensions), so that repository has to exist
 on disk - it's the one thing here that isn't consumed as a published image. The default is a
-sibling checkout, `AGENTS_DIR := ../talos-extensions`; clone the two side by side, or point it
+sibling checkout, `DAEMONS_DIR := ../talos-extensions`; clone the two side by side, or point it
 anywhere:
 
 ```sh
-make extension TARGET_ARCH=amd64 RELEASE_TAG=... AGENTS_DIR=/path/to/talos-extensions
+make extension TARGET_ARCH=amd64 RELEASE_TAG=... DAEMONS_DIR=/path/to/talos-extensions
 ```
 
 `preflight` fails loudly if the directory isn't there.
@@ -70,7 +70,7 @@ build/                   (gitignored) the extensions checkout
 it from `versions.env` and `patches/` alone.
 
 `ext-awg` itself — a Rust binary, unrelated to any of the above — lives in the sibling
-repo `talos-extensions` and is cross-compiled by `make agents`, then handed to the
+repo `talos-extensions` and is cross-compiled by `make daemons`, then handed to the
 `siderolabs/extensions` checkout for packaging alongside the module (part of
 `make extension`, see "Usage" below). See that repo's README for what it does; see
 `docs/extension-services.md` here for how it's configured and packaged into this
@@ -115,7 +115,7 @@ can't contain `+`) - see `cliff.toml`'s `tag_pattern` for the exact shape
 ```sh
 make print-config   # resolved pins, arch, image names
 make preflight       # docker/buildx/git/curl/cargo/cargo-zigbuild present, amneziawg-pkg exists
-make agents            # cross-compile ext-awg from ../talos-extensions
+make daemons            # cross-compile ext-awg from ../talos-extensions
 make extension           # package module + ext-awg into a Talos system extension (this arch)
 make all                   # preflight -> extension, the full local build
 ```
@@ -151,6 +151,7 @@ TARGET_ARCH=<arch> RELEASE_TAG=<this repo's own new release tag>`.
 **siderolabs/extensions:** bump `UPSTREAM_EXTENSIONS_REF` freely; it only needs to
 resolve, no coupling to the Talos version.
 
-**ext-awg:** any commit in `talos-extensions` — `make extension` always picks up
-whatever's currently checked out there (see `AGENTS_SHA` in the `Makefile`, still folded
-into `EXT_VERSION`); cut a new release (`RELEASE_TAG`) to publish under a fresh tag.
+**ext-awg:** the `talos-extensions` release tag named by `DAEMONS_REF` — `make check-daemons`
+refuses to build unless the sibling checkout sits at it, and `DAEMONS_SHA` records the commit
+into `EXT_VERSION`. To pick up new daemon work, tag `talos-extensions` and bump `DAEMONS_REF`;
+cut a new release (`RELEASE_TAG`) to publish under a fresh tag.
