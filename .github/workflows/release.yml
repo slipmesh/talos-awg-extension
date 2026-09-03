@@ -52,12 +52,18 @@ jobs:
         with:
           path: talos-awg-extension
 
-      # Pinned to talos-extensions' default branch tip, matching what a local dev build already
-      # does with a plain `../talos-extensions` sibling checkout (whatever's currently checked
-      # out there) - no separate version pin to keep in sync here.
+      - name: Read AGENTS_REF
+        id: pins
+        working-directory: talos-awg-extension
+        run: echo "agents_ref=$(sed -n 's/^AGENTS_REF=//p' versions.env)" >> "$GITHUB_OUTPUT"
+
+      # fetch-depth: 0 so `make check-agents` can resolve the tag with `git describe`; a
+      # shallow checkout carries the commit but not the tag that names it.
       - uses: actions/checkout@v4
         with:
           repository: slipmesh/talos-extensions
+          ref: ${{ steps.pins.outputs.agents_ref }}
+          fetch-depth: 0
           path: talos-extensions
 
       - uses: dtolnay/rust-toolchain@stable

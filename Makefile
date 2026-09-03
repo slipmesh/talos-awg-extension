@@ -22,12 +22,12 @@ SHELL := /bin/bash
 # picking one quietly is how you forget to build the other. Pass TARGET_ARCH explicitly.
 _GOALS := $(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))
 ifeq ($(TARGET_ARCH),)
-  ifneq ($(filter-out distclean help hashes checkout-extensions,$(_GOALS)),)
+  ifneq ($(filter-out distclean help hashes checkout-extensions check-agents,$(_GOALS)),)
     $(error TARGET_ARCH not set - pass TARGET_ARCH=amd64 or TARGET_ARCH=arm64)
   endif
 endif
 ifeq ($(RELEASE_TAG),)
-  ifneq ($(filter-out distclean help hashes checkout-extensions,$(_GOALS)),)
+  ifneq ($(filter-out distclean help hashes checkout-extensions check-agents,$(_GOALS)),)
     $(error RELEASE_TAG not set - pass RELEASE_TAG=v0.1.0+talos1.13.8, the git tag this build is released under)
   endif
 endif
@@ -79,6 +79,7 @@ print-config: ## Show the resolved pins, arch and image names.
 	@echo "talos            : $(TALOS_VERSION)"
 	@echo "extensions ref   : $(UPSTREAM_EXTENSIONS_REF)"
 	@echo "awg ref          : $(AWG_REF) ($(AWG_SHORT))"
+	@echo "agents ref       : $(AGENTS_REF) (sibling at $(AGENTS_SHA))"
 	@echo "kernel release   : $(KERNEL_RELEASE)"
 	@echo "host arch        : $$(uname -m)"
 	@echo "target arch      : $(TARGET_ARCH)"
@@ -116,9 +117,20 @@ checkout-extensions: | $(BUILD_DIR) ## Fetch siderolabs/extensions at the pinned
 	@rm -rf $(EXTENSIONS_DIR)/amneziawg
 	@cp -r patches/extensions/amneziawg $(EXTENSIONS_DIR)/amneziawg
 
-.PHONY: agents
-agents: ## Cross-compile the ext-awg extension-service daemon (../talos-extensions).
+.PHONY: check-agents
+check-agents: ## Assert ../talos-extensions is checked out at AGENTS_REF.
 	@test -d $(AGENTS_DIR) || { echo "sibling checkout not found: $(AGENTS_DIR)"; exit 1; }
+	@have=$$(git -C $(AGENTS_DIR) describe --tags --exact-match HEAD 2>/dev/null || echo "<untagged>"); \
+	if [ "$$have" = "$(AGENTS_REF)" ]; then \
+	  echo "talos-extensions at $(AGENTS_REF)"; \
+	else \
+	  echo "MISMATCH: ../talos-extensions is at $$have, AGENTS_REF is $(AGENTS_REF)"; \
+	  echo "the daemon baked into the extension would not be the one this release names"; \
+	  exit 1; \
+	fi
+
+.PHONY: agents
+agents: check-agents ## Cross-compile the ext-awg extension-service daemon (../talos-extensions).
 	@command -v cargo-zigbuild >/dev/null || { echo "MISSING: cargo-zigbuild"; exit 1; }
 	@rustup target add $(AGENT_RUST_TARGET) >/dev/null 2>&1 || true
 	@echo "==> cross-compiling awg for $(TARGET_ARCH) ($(AGENT_RUST_TARGET))"
