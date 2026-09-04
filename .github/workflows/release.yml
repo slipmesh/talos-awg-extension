@@ -56,8 +56,10 @@ jobs:
         id: pins
         working-directory: talos-awg-extension
         run: |
+          n=$(grep -c '^DAEMONS_REF=' versions.env || true)
+          [ "$n" = 1 ] || { echo "versions.env has $n DAEMONS_REF lines, want exactly one"; exit 1; }
           ref=$(sed -n 's/^DAEMONS_REF=//p' versions.env)
-          [ -n "$ref" ] || { echo 'DAEMONS_REF not found in versions.env'; exit 1; }
+          [ -n "$ref" ] || { echo 'DAEMONS_REF in versions.env is empty'; exit 1; }
           printf 'daemons_ref=%s\n' "$ref" >> "$GITHUB_OUTPUT"
 
       # fetch-depth: 0 so `make check-daemons` can resolve refs/tags/<ref>; a shallow
