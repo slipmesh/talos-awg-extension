@@ -1,7 +1,7 @@
 # Triggered by a `vX.Y.Z[+talosA.B.C]` tag - like ../bird, the release tag *is* the published
 # image tag (`+` swapped for `-`; see cliff.toml's tag_pattern and the Makefile's
-# RELEASE_TAG_SAFE). `make agents`/`make extension` need ../talos-extensions checked out as a real
-# sibling directory (Makefile: `test -d $(AGENTS_DIR) || exit 1`), so both repos are checked out
+# RELEASE_TAG_SAFE). `make daemons`/`make extension` need ../talos-extensions checked out as a real
+# sibling directory (Makefile: `check-daemons`), so both repos are checked out
 # side by side under `$GITHUB_WORKSPACE` and every step below runs with `working-directory:
 # talos-awg-extension` to make that relative path resolve correctly.
 #
@@ -52,12 +52,23 @@ jobs:
         with:
           path: talos-awg-extension
 
-      # Pinned to talos-extensions' default branch tip, matching what a local dev build already
-      # does with a plain `../talos-extensions` sibling checkout (whatever's currently checked
-      # out there) - no separate version pin to keep in sync here.
+      - name: Read DAEMONS_REF
+        id: pins
+        working-directory: talos-awg-extension
+        run: |
+          n=$(grep -c '^DAEMONS_REF=' versions.env || true)
+          [ "$n" = 1 ] || { echo "versions.env has $n DAEMONS_REF lines, want exactly one"; exit 1; }
+          ref=$(sed -n 's/^DAEMONS_REF=//p' versions.env)
+          [ -n "$ref" ] || { echo 'DAEMONS_REF in versions.env is empty'; exit 1; }
+          printf 'daemons_ref=%s\n' "$ref" >> "$GITHUB_OUTPUT"
+
+      # fetch-depth: 0 so `make check-daemons` can resolve refs/tags/<ref>; a shallow
+      # checkout carries the commit but not the tag that names it.
       - uses: actions/checkout@v4
         with:
           repository: slipmesh/talos-extensions
+          ref: ${{ steps.pins.outputs.daemons_ref }}
+          fetch-depth: 0
           path: talos-extensions
 
       - uses: dtolnay/rust-toolchain@stable

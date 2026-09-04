@@ -1,5 +1,4 @@
-# Passed straight through as --build-arg=VERSION=... (Makefile computes it as
-# $(AWG_SHORT)-$(TALOS_VERSION), same scheme the old Dockerfile.extension-based manifest
-# used) rather than reassembled here from other build-args - simpler than the string
-# manipulation zfs/vars.yaml does for the same purpose.
+# Passed straight through as --build-arg=VERSION=..., computed by the Makefile as
+# AWG_SHORT-TALOS_VERSION-DAEMONS_SHA, rather than reassembled here from other build-args -
+# simpler than the string manipulation zfs/vars.yaml does for the same purpose.
 VERSION: "{{ .BUILD_ARG_VERSION }}"
