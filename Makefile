@@ -119,6 +119,8 @@ checkout-extensions: | $(BUILD_DIR) ## Fetch siderolabs/extensions at the pinned
 
 .PHONY: check-daemons
 check-daemons: ## Assert ../talos-extensions is checked out at DAEMONS_REF.
+	@[ -n "$(DAEMONS_REF)" ] \
+	  || { echo "DAEMONS_REF is empty - nothing to check the checkout against"; exit 1; }
 	@git -C $(DAEMONS_DIR) rev-parse --git-dir >/dev/null 2>&1 \
 	  || { echo "not a git checkout: $(DAEMONS_DIR)"; exit 1; }
 	@want=$$(git -C $(DAEMONS_DIR) rev-parse --verify --quiet 'refs/tags/$(DAEMONS_REF)^{commit}' || true); \
