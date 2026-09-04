@@ -42,7 +42,7 @@ DAEMONS_DIR              := ../talos-extensions
 DAEMON_RUST_TARGET_amd64 := x86_64-unknown-linux-musl
 DAEMON_RUST_TARGET_arm64 := aarch64-unknown-linux-musl
 DAEMON_RUST_TARGET       := $(DAEMON_RUST_TARGET_$(TARGET_ARCH))
-DAEMONS_SHA              := $(shell git -C $(DAEMONS_DIR) rev-parse --short HEAD 2>/dev/null || echo unknown)
+DAEMONS_SHA              := $(shell git -C "$(DAEMONS_DIR)" rev-parse --short HEAD 2>/dev/null || echo unknown)
 
 AWG_SHORT := $(shell printf '%.7s' '$(AWG_REF)')
 
@@ -95,7 +95,7 @@ preflight: ## Check this machine can run the build.
 	docker version >/dev/null 2>&1 || { echo "docker daemon not reachable (permission denied or not running)"; fail=1; }; \
 	command -v cargo >/dev/null || { echo "MISSING: cargo"; fail=1; }; \
 	command -v cargo-zigbuild >/dev/null || { echo "MISSING: cargo-zigbuild (cargo install cargo-zigbuild --locked)"; fail=1; }; \
-	[ -d $(DAEMONS_DIR) ] || { echo "MISSING: sibling checkout $(DAEMONS_DIR)"; fail=1; }; \
+	[ -d "$(DAEMONS_DIR)" ] || { echo "MISSING: sibling checkout $(DAEMONS_DIR)"; fail=1; }; \
 	docker buildx imagetools inspect $(PKGS_NS)/amneziawg-pkg:$(PKGS_TAG) >/dev/null 2>&1 || \
 	  { echo "MISSING: $(PKGS_NS)/amneziawg-pkg:$(PKGS_TAG) - run 'make kernel' in ../talos-kernel first"; fail=1; }; \
 	echo "host $$(uname -m)"; \
@@ -121,14 +121,14 @@ checkout-extensions: | $(BUILD_DIR) ## Fetch siderolabs/extensions at the pinned
 check-daemons: ## Assert ../talos-extensions is checked out at DAEMONS_REF.
 	@[ -n "$(DAEMONS_REF)" ] \
 	  || { echo "DAEMONS_REF is empty - nothing to check the checkout against"; exit 1; }
-	@git -C $(DAEMONS_DIR) rev-parse --git-dir >/dev/null 2>&1 \
+	@git -C "$(DAEMONS_DIR)" rev-parse --git-dir >/dev/null 2>&1 \
 	  || { echo "not a git checkout: $(DAEMONS_DIR)"; exit 1; }
-	@want=$$(git -C $(DAEMONS_DIR) rev-parse --verify --quiet 'refs/tags/$(DAEMONS_REF)^{commit}' || true); \
+	@want=$$(git -C "$(DAEMONS_DIR)" rev-parse --verify --quiet 'refs/tags/$(DAEMONS_REF)^{commit}' || true); \
 	if [ -z "$$want" ]; then \
 	  echo "tag $(DAEMONS_REF) not in $(DAEMONS_DIR) - fetch its tags"; \
 	  exit 1; \
 	fi; \
-	have=$$(git -C $(DAEMONS_DIR) rev-parse --verify HEAD); \
+	have=$$(git -C "$(DAEMONS_DIR)" rev-parse --verify HEAD); \
 	if [ "$$have" = "$$want" ]; then \
 	  echo "talos-extensions at $(DAEMONS_REF)"; \
 	else \
@@ -142,7 +142,7 @@ daemons: check-daemons ## Cross-compile the ext-awg extension-service daemon (..
 	@command -v cargo-zigbuild >/dev/null || { echo "MISSING: cargo-zigbuild"; exit 1; }
 	@rustup target add $(DAEMON_RUST_TARGET) >/dev/null 2>&1 || true
 	@echo "==> cross-compiling awg for $(TARGET_ARCH) ($(DAEMON_RUST_TARGET))"
-	@(cd $(DAEMONS_DIR) && cargo zigbuild --release --target $(DAEMON_RUST_TARGET) -p awg)
+	@(cd "$(DAEMONS_DIR)" && cargo zigbuild --release --target $(DAEMON_RUST_TARGET) -p awg)
 
 # AWG_REF/TALOS_VERSION alone are not enough to make this version string unique - ext-awg's
 # own behavior changes on ../talos-extensions commits that don't touch either pin (its
@@ -159,8 +159,8 @@ EXT_VERSION := $(AWG_SHORT)-$(TALOS_VERSION)-$(DAEMONS_SHA)
 
 .PHONY: extension
 extension: daemons checkout-extensions ## Package the module + ext-awg into a Talos system extension image (bldr).
-	@cp $(DAEMONS_DIR)/target/$(DAEMON_RUST_TARGET)/release/awg $(EXTENSIONS_DIR)/amneziawg/awg-bin
-	@cp $(DAEMONS_DIR)/extension-services/awg.yaml $(EXTENSIONS_DIR)/amneziawg/awg-service.yaml
+	@cp "$(DAEMONS_DIR)/target/$(DAEMON_RUST_TARGET)/release/awg" "$(EXTENSIONS_DIR)/amneziawg/awg-bin"
+	@cp "$(DAEMONS_DIR)/extension-services/awg.yaml" "$(EXTENSIONS_DIR)/amneziawg/awg-service.yaml"
 	@echo "==> building $(EXT_IMAGE) ($(TARGET_ARCH))"
 	@$(MAKE) -C $(EXTENSIONS_DIR) docker-amneziawg PLATFORM=linux/$(TARGET_ARCH) \
 	  TARGET_ARGS="--tag=$(EXT_IMAGE) --push=true \
