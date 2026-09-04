@@ -13,7 +13,7 @@ Since the `installer` republish that ships it, this extension carries two things
 The `ext-awg` binary itself is built in the sibling repo
 [talos-extensions](https://github.com/slipmesh/talos-extensions) (a plain Rust workspace, no
 Talos-packaging concerns of its own - see its README) and cross-compiled +
-staged into this extension's rootfs by `make agents` (a new step `make extension` now depends on -
+staged into this extension's rootfs by `make daemons` (a new step `make extension` now depends on -
 see the top-level README's "Usage" for the full target list). One extension, one version, one
 `talosctl get extensions` - there's no separate `ext-awg` release to track.
 

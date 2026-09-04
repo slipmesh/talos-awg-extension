@@ -26,7 +26,7 @@ steps:
 ```
 
 `patches/extensions/amneziawg/pkg.yaml` mirrors this exactly for `amneziawg-pkg` (built in
-`../talos-kernel`), plus staging in the `ext-awg` binary (cross-compiled by `make agents`,
+`../talos-kernel`), plus staging in the `ext-awg` binary (cross-compiled by `make daemons`,
 copied in by `make extension` as a local file the package directory's own `install:` step
 reads from `/pkg/awg-bin` - the same mechanism `zfs`'s own `install:` step uses to read
 its `/pkg/zfs-service.yaml`: any file placed next to a package's `pkg.yaml` is available

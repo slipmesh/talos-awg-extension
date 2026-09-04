@@ -2,7 +2,7 @@
 # target) at amneziawg/pkg.yaml, alongside awg-service.yaml (copied from the sibling
 # ../talos-extensions repo's extension-services/awg.yaml at build time - the fixed
 # container spec ext-awg ships with) and awg-bin (the cross-compiled ext-awg binary,
-# staged in by `make agents` before this runs). Modeled on this same checkout's
+# staged in by `make daemons` before this runs). Modeled on this same checkout's
 # storage/zfs/pkg.yaml: pulls in the kernel module from the amneziawg-pkg OCI image built
 # in siderolabs/pkgs (see ../pkgs/amneziawg-pkg/pkg.yaml) via `dependencies: [image: ...]`,
 # same as zfs pulls in zfs-pkg - it's a plain OCI layer merge, not a rebuild, so the
