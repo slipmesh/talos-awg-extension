@@ -59,10 +59,9 @@ PKGS_TAG := $(subst +,-,$(KERNEL_RELEASE))
 # Registry tag follows ../bird's own convention: the git release tag *is* the image tag
 # (`+` swapped for `-`, since OCI tags can't contain `+`) - RELEASE_TAG is required, not
 # derived from DAEMONS_SHA, so a rebuild against unchanged pins still needs an explicit new
-# release to publish under (the old DAEMONS_SHA-keyed scheme's staleness fix - re-pushing
-# under an unchanged tag has been observed to not reliably reach a node on `talosctl
-# upgrade`, same digest hash across two different builds under one tag - is now just "cut
-# a new release").
+# release to publish under. It was derived once, and re-pushing under an unchanged tag has
+# been observed to not reliably reach a node on `talosctl upgrade` - same digest hash across
+# two different builds under one tag.
 RELEASE_TAG_SAFE := $(subst +,-,$(RELEASE_TAG))
 EXT_IMAGE := $(IMAGE):$(RELEASE_TAG_SAFE)-$(TARGET_ARCH)
 
