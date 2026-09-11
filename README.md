@@ -141,6 +141,20 @@ Full node-level verification (module loaded, `sig_enforce` on, `ext-awg` running
 after `talos-installer` bundles this extension and a node runs `talosctl upgrade` — see
 that repo's README.
 
+## Licensing of what the image ships
+
+This repository is MIT OR Apache-2.0, and so is the `ext-awg` daemon baked into the image.
+The kernel module is not: `amneziawg.ko` is **GPL-2.0**, and publishing the image
+redistributes it, which obliges us to ship the licence text and say where the source is.
+
+Both live in the image at `/usr/local/share/licenses/amneziawg/` — `COPYING`, taken from
+the module's own source at `AWG_REF` rather than vendored here, and `SOURCES`, naming the
+exact upstream tarball that text came from. The build fails if `COPYING` is missing or is
+not the GPL, so an image cannot ship without it.
+
+Two separate programs in one image is mere aggregation, which GPL-2 §2 permits: the daemon
+is not derived from the module and does not link against it, so its own licence stands.
+
 ## Bumping
 
 **Talos/AmneziaWG:** bump `talos-kernel` first (its own README, "Bumping") and cut a

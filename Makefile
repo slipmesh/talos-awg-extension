@@ -163,7 +163,9 @@ extension: daemons checkout-extensions ## Package the module + ext-awg into a Ta
 	@echo "==> building $(EXT_IMAGE) ($(TARGET_ARCH))"
 	@$(MAKE) -C $(EXTENSIONS_DIR) docker-amneziawg PLATFORM=linux/$(TARGET_ARCH) \
 	  TARGET_ARGS="--tag=$(EXT_IMAGE) --push=true \
-	    --build-arg=PKGS_PREFIX=$(PKGS_NS) --build-arg=PKGS=$(PKGS_TAG) --build-arg=VERSION=$(EXT_VERSION)"
+	    --build-arg=PKGS_PREFIX=$(PKGS_NS) --build-arg=PKGS=$(PKGS_TAG) --build-arg=VERSION=$(EXT_VERSION) \
+	    --build-arg=AWG_REF=$(AWG_REF) \
+	    --build-arg=AWG_SHA256=$(AWG_SHA256) --build-arg=AWG_SHA512=$(AWG_SHA512)"
 	@echo
 	@echo "published: $(EXT_IMAGE)"
 	@echo "talos-installer needs this ref to bundle it into an installer"
@@ -174,7 +176,7 @@ all: preflight extension ## Everything: daemons -> extension image.
 ##@ Maintenance
 
 .PHONY: hashes
-hashes: ## Recompute AWG_SHA256/AWG_SHA512 for the current AWG_REF (informational - this repo doesn't consume them, see ../talos-kernel).
+hashes: ## Recompute AWG_SHA256/AWG_SHA512 for the current AWG_REF (this build fetches that source for its COPYING).
 	@tmp=$$(mktemp); \
 	curl -sSL --fail "https://github.com/amnezia-vpn/amneziawg-linux-kernel-module/archive/$(AWG_REF).tar.gz" -o "$$tmp"; \
 	echo "AWG_SHA256=$$(sha256sum "$$tmp" | cut -d' ' -f1)"; \

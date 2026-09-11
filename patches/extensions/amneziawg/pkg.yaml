@@ -19,17 +19,43 @@ dependencies:
   - stage: base
   - image: "{{ .BUILD_ARG_PKGS_PREFIX }}/amneziawg-pkg:{{ .BUILD_ARG_PKGS }}"
 steps:
-  - install:
+  - sources:
+      # Fetched for COPYING alone - the module itself comes prebuilt and signed in the
+      # amneziawg-pkg image above, and that image carries no licence text. GPL-2 §3 wants
+      # the licence to travel with the binary, so it is taken from the module's own source
+      # at the same ref rather than from a copy vendored here that could drift from it.
+      - url: https://github.com/amnezia-vpn/amneziawg-linux-kernel-module/archive/{{ .BUILD_ARG_AWG_REF }}.tar.gz
+        destination: awg-module.tar.gz
+        sha256: "{{ .BUILD_ARG_AWG_SHA256 }}"
+        sha512: "{{ .BUILD_ARG_AWG_SHA512 }}"
+    prepare:
+      - |
+        mkdir -p module-src && tar -xzf awg-module.tar.gz --strip-components=1 -C module-src
+    install:
       - |
         mkdir -p /rootfs/usr/lib/modules && cp -R /usr/lib/modules/* /rootfs/usr/lib/modules/
 
         mkdir -p /rootfs/usr/local/lib/containers/awg /rootfs/usr/local/etc/containers
         install -m 0755 /pkg/awg-bin /rootfs/usr/local/lib/containers/awg/awg
         cp /pkg/awg-service.yaml /rootfs/usr/local/etc/containers/awg.yaml
+
+        install -D -m 0644 module-src/COPYING \
+          /rootfs/usr/local/share/licenses/amneziawg/COPYING
+        cat > /rootfs/usr/local/share/licenses/amneziawg/SOURCES <<EOF
+        amneziawg-linux-kernel-module {{ .BUILD_ARG_AWG_REF }}, GPL-2.0, COPYING beside this file.
+          https://github.com/amnezia-vpn/amneziawg-linux-kernel-module/archive/{{ .BUILD_ARG_AWG_REF }}.tar.gz
+
+        The ext-awg daemon shipped alongside it is MIT OR Apache-2.0 and is a separate work:
+          https://github.com/slipmesh/talos-extensions
+        EOF
     test:
       - |
         # https://www.kernel.org/doc/html/v4.15/admin-guide/module-signing.html#signed-modules-and-stripping
         find /rootfs/usr/lib/modules -name '*.ko' -exec grep -FL '~Module signature appended~' {} \+
+      - |
+        # An empty or missing licence is the failure this whole step exists to prevent, and
+        # it would otherwise only show up in a published image.
+        grep -q 'GNU GENERAL PUBLIC LICENSE' /rootfs/usr/local/share/licenses/amneziawg/COPYING
       - |
         mkdir -p /extensions-validator-rootfs
         cp -r /rootfs/ /extensions-validator-rootfs/rootfs
