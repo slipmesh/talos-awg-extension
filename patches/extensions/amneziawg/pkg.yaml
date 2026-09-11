@@ -36,7 +36,7 @@ steps:
         # https://www.kernel.org/doc/html/v4.15/admin-guide/module-signing.html#signed-modules-and-stripping
         find /rootfs/usr/lib/modules -name '*.ko' -exec grep -FL '~Module signature appended~' {} \+
       - |
-        # The module is GPL-2.0 and its licence text rides in the same image it does, so
+        # The module is GPL-2.0 and its license text rides in the same image it does, so
         # an image cannot ship the module without it. Matched on the version line rather
         # than the title, which GPLv3 shares.
         grep -q 'Version 2, June 1991' /rootfs/usr/local/share/licenses/amneziawg/COPYING
