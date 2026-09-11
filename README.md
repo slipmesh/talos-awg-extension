@@ -145,12 +145,17 @@ that repo's README.
 
 This repository is MIT OR Apache-2.0, and so is the `ext-awg` daemon baked into the image.
 The kernel module is not: `amneziawg.ko` is **GPL-2.0**, and publishing the image
-redistributes it, which obliges us to ship the licence text and say where the source is.
+redistributes it in object-code form. That carries two distinct duties, which is why the
+image ships two files in `/usr/local/share/licenses/amneziawg/`:
 
-Both live in the image at `/usr/local/share/licenses/amneziawg/` — `COPYING`, taken from
-the module's own source at `AWG_REF` rather than vendored here, and `SOURCES`, naming the
-exact upstream tarball that text came from. The build fails if `COPYING` is missing or is
-not the GPL, so an image cannot ship without it.
+- `COPYING` — a copy of the licence, asked for by §1 and carried over to object code by §3
+  ("under the terms of Sections 1 and 2 above"). Taken from the module's own source at
+  `AWG_REF` rather than vendored here, so it cannot drift from the ref it covers.
+- `SOURCES` — where to get the corresponding source, which is §3's own requirement, naming
+  the exact upstream tarball.
+
+The build greps the installed `COPYING` for GPLv2's version line, so an image cannot ship
+without it, and an upstream relicense fails the build rather than passing quietly.
 
 Two separate programs in one image is mere aggregation, which GPL-2 §2 permits: the daemon
 is not derived from the module and does not link against it, so its own licence stands.

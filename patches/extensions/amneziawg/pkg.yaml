@@ -21,9 +21,11 @@ dependencies:
 steps:
   - sources:
       # Fetched for COPYING alone - the module itself comes prebuilt and signed in the
-      # amneziawg-pkg image above, and that image carries no licence text. GPL-2 §3 wants
-      # the licence to travel with the binary, so it is taken from the module's own source
-      # at the same ref rather than from a copy vendored here that could drift from it.
+      # amneziawg-pkg image above, and that image carries no licence text. §1 is what asks
+      # for a copy of the licence, and §3 applies it to object code ("under the terms of
+      # Sections 1 and 2 above"), so shipping a binary module obliges us to it. Taken from
+      # the module's own source at the same ref rather than vendored here, where it could
+      # drift from the ref it claims to cover.
       - url: https://github.com/amnezia-vpn/amneziawg-linux-kernel-module/archive/{{ .BUILD_ARG_AWG_REF }}.tar.gz
         destination: awg-module.tar.gz
         sha256: "{{ .BUILD_ARG_AWG_SHA256 }}"
@@ -54,8 +56,10 @@ steps:
         find /rootfs/usr/lib/modules -name '*.ko' -exec grep -FL '~Module signature appended~' {} \+
       - |
         # An empty or missing licence is the failure this whole step exists to prevent, and
-        # it would otherwise only show up in a published image.
-        grep -q 'GNU GENERAL PUBLIC LICENSE' /rootfs/usr/local/share/licenses/amneziawg/COPYING
+        # it would otherwise only show up in a published image. Matched on the version line
+        # rather than the title, so an upstream relicense to GPLv3 fails here instead of
+        # passing while SOURCES and the README still say GPL-2.0.
+        grep -q 'Version 2, June 1991' /rootfs/usr/local/share/licenses/amneziawg/COPYING
       - |
         mkdir -p /extensions-validator-rootfs
         cp -r /rootfs/ /extensions-validator-rootfs/rootfs
