@@ -26,10 +26,20 @@ steps:
         mkdir -p /rootfs/usr/local/lib/containers/awg /rootfs/usr/local/etc/containers
         install -m 0755 /pkg/awg-bin /rootfs/usr/local/lib/containers/awg/awg
         cp /pkg/awg-service.yaml /rootfs/usr/local/etc/containers/awg.yaml
+
+        # Same image the module comes from - amneziawg-pkg installs its COPYING beside it
+        # rather than each consumer fetching the source again for that one file.
+        mkdir -p /rootfs/usr/local/share/licenses
+        cp -a /usr/local/share/licenses/amneziawg /rootfs/usr/local/share/licenses/
     test:
       - |
         # https://www.kernel.org/doc/html/v4.15/admin-guide/module-signing.html#signed-modules-and-stripping
         find /rootfs/usr/lib/modules -name '*.ko' -exec grep -FL '~Module signature appended~' {} \+
+      - |
+        # The module is GPL-2.0 and its licence text rides in the same image it does, so
+        # an image cannot ship the module without it. Matched on the version line rather
+        # than the title, which GPLv3 shares.
+        grep -q 'Version 2, June 1991' /rootfs/usr/local/share/licenses/amneziawg/COPYING
       - |
         mkdir -p /extensions-validator-rootfs
         cp -r /rootfs/ /extensions-validator-rootfs/rootfs
