@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.0+talos1.14.0] - 2026-09-11
+
+### Added ✨
+
+- Take the module's license from the image that carries the module
+
+### Build system 🛠️
+
+- Take the daemon release that moves the netlink stack
+
+### Style 🎨
+
+- Spell it license, as the rest of the repo does
+
 ## [0.1.6+talos1.14.0] - 2026-09-04
 
 ### Added ✨
