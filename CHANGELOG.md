@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.1+talos1.14.2] - 2026-09-30
+
+### Added ✨
+
+- Package the Talos v1.14.2 kernel module
+
+### Build system 🛠️
+
+- Take the daemon release that reads its config through yaml_serde
+
 ## [0.2.0+talos1.14.0] - 2026-09-11
 
 ### Added ✨
