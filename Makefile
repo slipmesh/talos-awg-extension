@@ -47,16 +47,16 @@ DAEMONS_SHA              := $(shell git -C "$(DAEMONS_DIR)" rev-parse --short HE
 AWG_SHORT := $(shell printf '%.7s' '$(AWG_REF)')
 
 # ../talos-kernel now tags its published images by its own release tag (see that repo's
-# Makefile/RELEASE_TAG_SAFE, mirroring ../bird) rather than a TALOS_VERSION+AWG_REF
+# Makefile/RELEASE_TAG_SAFE) rather than a TALOS_VERSION+AWG_REF
 # reconstruction - so versions.env's KERNEL_RELEASE pin names the exact talos-kernel
-# release this build consumes, the same discipline BIRD_VERSION/AWG_REF already use for
-# their own upstreams. Bump it by hand whenever you want to pick up a new talos-kernel
+# release this build consumes, the same discipline AWG_REF already uses for
+# its own upstream. Bump it by hand whenever you want to pick up a new talos-kernel
 # release; TALOS_VERSION/AWG_REF stay as informational cross-checks (still folded into
 # EXT_VERSION below) that the two repos' pins haven't silently drifted apart.
 PKGS_NS  := ghcr.io/slipmesh
 PKGS_TAG := $(subst +,-,$(KERNEL_RELEASE))
 
-# Registry tag follows ../bird's own convention: the git release tag *is* the image tag
+# The git release tag *is* the image tag
 # (`+` swapped for `-`, since OCI tags can't contain `+`) - RELEASE_TAG is required, not
 # derived from DAEMONS_SHA, so a rebuild against unchanged pins still needs an explicit new
 # release to publish under. It was derived once, and re-pushing under an unchanged tag has

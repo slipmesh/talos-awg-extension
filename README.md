@@ -107,8 +107,8 @@ whenever; `make checkout-extensions` just needs it to resolve.
 
 Every target below except `distclean`/`help`/`hashes`/`checkout-extensions` needs
 `TARGET_ARCH=amd64` or `TARGET_ARCH=arm64` and `RELEASE_TAG=<the git tag being released>`
-(no defaults — `export TARGET_ARCH=amd64` once, or pass either per invocation). Like
-`bird`, `RELEASE_TAG` *is* the published image tag (`+` swapped for `-`, since OCI tags
+(no defaults — `export TARGET_ARCH=amd64` once, or pass either per invocation).
+`RELEASE_TAG` *is* the published image tag (`+` swapped for `-`, since OCI tags
 can't contain `+`) - see `cliff.toml`'s `tag_pattern` for the exact shape
 (`vX.Y.Z[+talosA.B.C]`).
 
