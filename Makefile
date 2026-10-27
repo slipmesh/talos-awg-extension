@@ -49,8 +49,8 @@ AWG_SHORT := $(shell printf '%.7s' '$(AWG_REF)')
 # ../talos-kernel now tags its published images by its own release tag (see that repo's
 # Makefile/RELEASE_TAG_SAFE) rather than a TALOS_VERSION+AWG_REF
 # reconstruction - so versions.env's KERNEL_RELEASE pin names the exact talos-kernel
-# release this build consumes, the same discipline BIRD_VERSION/AWG_REF already use for
-# their own upstreams. Bump it by hand whenever you want to pick up a new talos-kernel
+# release this build consumes, the same discipline AWG_REF already uses for
+# its own upstream. Bump it by hand whenever you want to pick up a new talos-kernel
 # release; TALOS_VERSION/AWG_REF stay as informational cross-checks (still folded into
 # EXT_VERSION below) that the two repos' pins haven't silently drifted apart.
 PKGS_NS  := ghcr.io/slipmesh
